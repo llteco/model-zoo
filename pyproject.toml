@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zoo"
+dynamic = ["version", "description"]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "onnxscript>=0.6.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pyright]
+include = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-q", "-s"]
+
+[tool.flake8]
+ignore = ['E231', 'E241', 'E704']
+per-file-ignores = ['__init__.py:F401']
+exclude = []
+max-line-length = 88
+max-complexity = 20
+count = true
+
+[tool.isort]
+profile = "black"
+skip_glob = []
+
+[tool.pylint."MAIN"]
+ignore-paths = []
+
+[tool.pylint."MESSAGES CONTROL"]
+disable = [
+    "logging-fstring-interpolation",
+    "missing-module-docstring",
+    "no-member",
+    "no-name-in-module",
+    "fixme",
+    "R",
+    "I",
+]
