@@ -72,7 +72,7 @@ class Guide(nn.Module):
     def forward(self, inputs):
         guidemap = self.channel_mixing(inputs).permute(0, 2, 3, 1).contiguous()
         guidemap = self.tanh(guidemap).contiguous()
-        ref = self.gen_grid(guidemap.shape).to(inputs.device)
+        ref = self.gen_grid(guidemap.shape).to(dtype=inputs.dtype, device=inputs.device)
         guidemap = torch.cat((ref, guidemap), -1)
         return guidemap
 
@@ -307,8 +307,8 @@ class AITM3(nn.Module):
         z0 = torch.floor(z).long()
         z1 = z0 + 1
 
-        w1 = z - z0.float()
-        w0 = 1.0 - w1
+        w1 = z - z0.to(z.dtype)
+        w0 = 1 - w1
 
         z0_clamp = z0.clamp(0, d - 1)
         z1_clamp = z1.clamp(0, d - 1)

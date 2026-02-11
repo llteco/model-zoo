@@ -51,7 +51,7 @@ class BenchGridSample(torch.nn.Module):
         self.align_corners = align_corners
         # generate random grid to sample
         spatial = len(dims) - 2
-        self.grid = torch.rand(dims[0], dims[2], dims[3], spatial) * 2 - 1
+        self.grid = torch.rand(dims[0], *dims[spatial:], spatial) * 2 - 1
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         self.grid = self.grid.to(x.device)

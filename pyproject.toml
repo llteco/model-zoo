@@ -24,8 +24,10 @@ cpu = [
     "triton-windows; sys_platform == 'win32'",
 ]
 cuda = [
+    "tensordict>=0.11.0",
     "torch",
     "torchaudio",
+    "torchrl>=0.11.1",
     "torchvision",
     "triton-windows; sys_platform == 'win32'",
 ]
