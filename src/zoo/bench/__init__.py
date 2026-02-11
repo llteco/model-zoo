@@ -314,7 +314,15 @@ def benchmark(
     if dynamo:
         model = torch.compile(model)
     with torch.inference_mode():
-        inputs = [shape.to_tensor(device=device) for shape in input_shapes]
+        if input_shapes:
+            inputs = [shape.to_tensor(device=device) for shape in input_shapes]
+        elif hasattr(model, "default_inputs"):
+            inputs = list(getattr(model, "default_inputs", {}).values())
+            inputs = [i.to(device=torch.device(device)) for i in inputs]
+            if half:
+                inputs = [i.half() for i in inputs]
+        else:
+            inputs = []
         for _ in range(warmup):
             model(*inputs)
         times = []
