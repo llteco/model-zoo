@@ -319,18 +319,7 @@ class PPO(TensorDictModuleBase):
 
         # Dummy Input for nn lazymodule
         dummy_input = observation_spec.zero()
-        # print("dummy_input: ", dummy_input)
-
         self.__call__(dummy_input)
-
-        # Initialize network
-        def init_(module):
-            if isinstance(module, nn.Linear):
-                nn.init.orthogonal_(module.weight, 0.01)
-                nn.init.constant_(module.bias, 0.0)
-
-        self.actor.apply(init_)
-        self.critic.apply(init_)
 
     def forward(self, tensordict):
         self.feature_extractor(tensordict)
