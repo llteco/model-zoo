@@ -149,3 +149,7 @@ Thumbs.db
 # uv
 .uv/
 uv.lock
+
+models/**/*.onnx
+tests/**/*.ncu-rep
+tests/**/*.nsys-rep
