@@ -3,7 +3,8 @@
 
 import argparse
 
-from . import InputShape, benchmark
+from ..utils import InputShape
+from . import benchmark
 from .registry import BENCH
 
 USAGE = """Benchmark modules.
