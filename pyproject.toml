@@ -8,13 +8,14 @@ dynamic = ["version", "description"]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "onnxscript>=0.6.0",
+    "hyperonnx>=1.0.1",
     "prettytable>=3.17.0",
     "pyreadline3>=3.5.4",
 ]
 
 [project.scripts]
 bench = "zoo.bench.__main__:main"
+export = "zoo.export.__main__:main"
 
 [project.optional-dependencies]
 cpu = [
