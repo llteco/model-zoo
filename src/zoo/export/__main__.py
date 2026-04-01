@@ -4,7 +4,7 @@
 import argparse
 
 from ..utils import InputShape
-from . import export, EXPORT
+from . import EXPORT, export
 
 USAGE = """Export modules.
 uv -m zoo.export {module_name} {input_shape1} {input_shape2} ... [options] [init args]
@@ -17,11 +17,16 @@ parser = argparse.ArgumentParser(usage=USAGE)
 parser.add_argument("module", nargs="?", choices=EXPORT.list_all().keys())
 parser.add_argument("input_shapes", nargs="*", action=InputShape)
 parser.add_argument("--dynamo", action="store_true")
-parser.add_argument("--opset-version", "-v", type=int, default=19)
+parser.add_argument("--opset-version", "-v", type=int, default=23)
 parser.add_argument("--device", type=str, default="cpu", choices=["cpu", "cuda"])
 parser.add_argument("--cpu", nargs="?", dest="device", const="cpu")
 parser.add_argument("--cuda", nargs="?", dest="device", const="cuda")
 parser.add_argument("--external-directory", default=None)
+parser.add_argument(
+    "--export-with-hier",
+    action="store_true",
+    help="Export with hierarchical structure, exportable hier defined in <model>.hier",
+)
 parser.add_argument("--man", "-m", "-?", const="manual", nargs="?")
 
 
@@ -43,6 +48,7 @@ def main(argv=None) -> int:
         device=args.device,
         external_data=args.external_directory is not None,
         external_directory=args.external_directory,
+        export_with_hier=args.export_with_hier,
     )
     return 0
 

@@ -60,6 +60,7 @@ def export(
     external_directory: str | os.PathLike | None = None,
     opset_version: int = 19,
     device: Literal["cpu", "cuda"] = "cpu",
+    export_with_hier: bool = False,
 ):
     """Export the module under test.
 
@@ -73,6 +74,8 @@ def export(
         external_directory (str | os.PathLike | None): Directory to store external data.
         opset_version (int): The ONNX opset version to use.
         device (Literal["cpu", "cuda"]): The device to run the export on.
+        export_with_hier (bool): Whether to export with hierarchical structure,
+            exportable hier defined in <model>.hier.
     """
     model = create_module(module_name, constructors)
     model = model.to(device=device)
@@ -91,7 +94,7 @@ def export(
         dynamo=dynamo,
         external_data=external_data,
         external_directory=external_directory,
-        hiera=getattr(model, "hier", None),
+        hiera=getattr(model, "hier", None) if export_with_hier else None,
         input_names=getattr(model, "input_names", None),
         output_names=getattr(model, "output_names", None),
     )

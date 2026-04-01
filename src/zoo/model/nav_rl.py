@@ -347,32 +347,24 @@ class Agent(nn.Module):
         observation_dim = 8
         observation_spec = Composite(
             {
-                "agents": Composite(
-                    {
-                        "observation": Composite(
-                            {
-                                "state": UnboundedContinuous((observation_dim,)),
-                                "lidar": UnboundedContinuous((1, 36, 4)),
-                                "direction": UnboundedContinuous((1, 3)),
-                                "dynamic_obstacle": UnboundedContinuous((1, 5, 10)),
-                            }
-                        ),
-                    }
-                ).expand(1)
+                "agents": Composite({
+                    "observation": Composite({
+                        "state": UnboundedContinuous((observation_dim,)),
+                        "lidar": UnboundedContinuous((1, 36, 4)),
+                        "direction": UnboundedContinuous((1, 3)),
+                        "dynamic_obstacle": UnboundedContinuous((1, 5, 10)),
+                    }),
+                }).expand(1)
             },
             shape=[1],
         )
 
         action_dim = 3
-        action_spec = Composite(
-            {
-                "agents": Composite(
-                    {
-                        "action": UnboundedContinuous((action_dim,)),
-                    }
-                )
-            }
-        ).expand(1, action_dim)
+        action_spec = Composite({
+            "agents": Composite({
+                "action": UnboundedContinuous((action_dim,)),
+            })
+        }).expand(1, action_dim)
 
         policy = PPO(observation_spec, action_spec)
         return policy
@@ -380,18 +372,14 @@ class Agent(nn.Module):
     def forward(self, robot_state, static_obs_input, dyn_obs_input, target_dir):
         obs = TensorDict(
             {
-                "agents": TensorDict(
-                    {
-                        "observation": TensorDict(
-                            {
-                                "state": robot_state,
-                                "lidar": static_obs_input,
-                                "direction": target_dir,
-                                "dynamic_obstacle": dyn_obs_input,
-                            }
-                        )
-                    }
-                )
+                "agents": TensorDict({
+                    "observation": TensorDict({
+                        "state": robot_state,
+                        "lidar": static_obs_input,
+                        "direction": target_dir,
+                        "dynamic_obstacle": dyn_obs_input,
+                    })
+                })
             },
         )
 

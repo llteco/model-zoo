@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 from typing import Literal, Sequence
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

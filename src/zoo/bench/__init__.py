@@ -120,9 +120,11 @@ def benchmark(
             inputs = [shape.to_tensor(device=device) for shape in input_shapes]
         elif hasattr(model, "default_inputs"):
             inputs = list(getattr(model, "default_inputs", {}).values())
-            inputs = [i.to(device=torch.device(device)) for i in inputs]
-            if half:
-                inputs = [i.half() for i in inputs]
+            for n, i in enumerate(inputs):
+                if isinstance(i, torch.Tensor):
+                    inputs[n] = i.to(device=torch.device(device))
+                    if half:
+                        inputs[n] = inputs[n].half()
         else:
             inputs = []
         for _ in range(warmup):

@@ -8,9 +8,12 @@ dynamic = ["version", "description"]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "hyperonnx>=1.0.1",
+    "hyperonnx>=1.0.2",
     "prettytable>=3.17.0",
     "pyreadline3>=3.5.4",
+    "tensordict>=0.11.0",
+    "torchrl>=0.11.1",
+    "transformers<5.4",
 ]
 
 [project.scripts]
@@ -19,23 +22,24 @@ export = "zoo.export.__main__:main"
 
 [project.optional-dependencies]
 cpu = [
-    "torch",
+    "torch<2.11",
     "torchaudio",
     "torchvision",
     "triton-windows; sys_platform == 'win32'",
 ]
 cuda = [
-    "tensordict>=0.11.0",
-    "torch",
+    "torch<2.11",
     "torchaudio",
-    "torchrl>=0.11.1",
     "torchvision",
     "triton-windows; sys_platform == 'win32'",
 ]
-xpu = ["torch", "torchaudio", "torchvision", "pytorch-triton-xpu"]
+xpu = ["torch<2.11", "torchaudio", "torchvision", "pytorch-triton-xpu"]
 
 [dependency-groups]
-dev = ["black>=26.1.0", "isort>=7.0.0", "pylint>=4.0.4", "pyright>=1.1.408"]
+dev = [
+    "pyright>=1.1.408",
+    "ruff>=0.15.8",
+]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -49,18 +53,6 @@ include = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["-q", "-s"]
-
-[tool.flake8]
-ignore = ['E231', 'E241', 'E704']
-per-file-ignores = ['__init__.py:F401']
-exclude = []
-max-line-length = 88
-max-complexity = 20
-count = true
-
-[tool.isort]
-profile = "black"
-skip_glob = []
 
 [tool.pylint."MAIN"]
 ignore-paths = []
@@ -121,3 +113,10 @@ explicit = true
 
 [tool.uv]
 conflicts = [[{ extra = "cpu" }, { extra = "xpu" }, { extra = "cuda" }]]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "I"]
+ignore = ["E203", "E231", "E241"]
