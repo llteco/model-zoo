@@ -22,18 +22,18 @@ export = "zoo.export.__main__:main"
 
 [project.optional-dependencies]
 cpu = [
-    "torch<2.11",
+    "torch>=2.11,<2.12",
     "torchaudio",
     "torchvision",
     "triton-windows; sys_platform == 'win32'",
 ]
 cuda = [
-    "torch<2.11",
+    "torch>=2.11,<2.12",
     "torchaudio",
     "torchvision",
     "triton-windows; sys_platform == 'win32'",
 ]
-xpu = ["torch<2.11", "torchaudio", "torchvision", "pytorch-triton-xpu"]
+xpu = ["torch>=2.11,<2.12", "torchaudio", "torchvision", "pytorch-triton-xpu"]
 
 [dependency-groups]
 dev = [
