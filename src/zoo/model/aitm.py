@@ -176,9 +176,7 @@ class Debayer3x3(torch.nn.Module):
                 1,
                 torch.div(H, 2, rounding_mode="floor"),
                 torch.div(W, 2, rounding_mode="floor"),
-            ).expand(
-                B, -1, -1, -1
-            ),  # expand in batch is faster than repeat
+            ).expand(B, -1, -1, -1),  # expand in batch is faster than repeat
         )
 
         return rgb

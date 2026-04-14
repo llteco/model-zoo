@@ -47,6 +47,7 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+.ruff_cache/
 cover/
 
 # Translations
@@ -150,6 +151,13 @@ Thumbs.db
 .uv/
 uv.lock
 
-models/**/*.onnx
+*.onnx
+*.bin
+*.xml
+*.tflite
 tests/**/*.ncu-rep
 tests/**/*.nsys-rep
+
+# agents
+.claude/settings.json
+.claude/settings.local.json
