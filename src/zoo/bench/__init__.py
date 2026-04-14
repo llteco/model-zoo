@@ -3,7 +3,6 @@
 
 import argparse
 import contextlib
-import importlib
 import time
 from pathlib import Path
 from typing import Literal
@@ -11,24 +10,8 @@ from typing import Literal
 import torch
 import torch.nn as nn
 
-from ..utils import InputShape, get_argparse_config
+from ..utils import InputShape, auto_import, get_argparse_config
 from .registry import BENCH
-
-
-def auto_import(module_name: str):
-    """Import from `module_name` directory sources.
-
-    Args:
-        module_name (str): The name of the module to import from, e.g., "conv".
-    """
-    for f in Path(__file__).parent.glob(f"{module_name}/**/*.py"):
-        f = f.relative_to(Path(__file__).parent).with_suffix("").as_posix()
-        f = f.replace("/", ".")
-        importlib.import_module(f".{f}", __package__)
-
-
-for module in ("conv", "sdpa", "gemm", "mlp", "gather", "scatter", "vadd", "model"):
-    auto_import(module)
 
 
 @contextlib.contextmanager
@@ -152,3 +135,7 @@ def benchmark(
     if reduce == "max":
         return max(times)
     return times
+
+
+for module in ("conv", "sdpa", "gemm", "mlp", "gather", "scatter", "vadd", "model"):
+    auto_import(Path(__file__).parent, module, __package__)
