@@ -117,7 +117,7 @@ class Debayer3x3(torch.nn.Module):
     """
 
     def __init__(self, layout: Layout = Layout.GRBG):
-        super(Debayer3x3, self).__init__()
+        super().__init__()
         self.layout = layout
         # fmt: off
         self.kernels = torch.nn.Parameter(

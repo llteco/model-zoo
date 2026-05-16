@@ -1,6 +1,6 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
-from typing import Literal, Sequence
+from collections.abc import Sequence
+from typing import Literal
 
 import torch
 import torch.nn as nn
@@ -221,7 +221,7 @@ class ConvNextBlock(nn.Module):
         self.act = nn.GELU()
         self.pwconv2 = nn.Linear(4 * output_dim, dim)
         self.gamma = (
-            nn.Parameter(layer_scale_init_value * torch.ones((dim)), requires_grad=True)
+            nn.Parameter(layer_scale_init_value * torch.ones(dim), requires_grad=True)
             if layer_scale_init_value > 0
             else None
         )
@@ -355,7 +355,7 @@ class ResNetFPN(nn.Module):
 
 class BasicMotionEncoder(nn.Module):
     def __init__(self, corr_channel, dim=128):
-        super(BasicMotionEncoder, self).__init__()
+        super().__init__()
         cor_planes = corr_channel
         self.convc1 = nn.Conv2d(cor_planes, dim * 2, 1, padding=0)
         self.convc2 = nn.Conv2d(dim * 2, dim + dim // 2, 3, padding=1)
@@ -377,7 +377,7 @@ class BasicMotionEncoder(nn.Module):
 class BasicUpdateBlock(nn.Module):
     def __init__(self, corr_channel, num_blocks, hdim=128, cdim=128):
         # net: hdim, inp: cdim
-        super(BasicUpdateBlock, self).__init__()
+        super().__init__()
         self.encoder = BasicMotionEncoder(corr_channel, dim=cdim)
         self.refine = []
         for _ in range(num_blocks):

@@ -1,6 +1,5 @@
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Union
 
 import torch
 import torch.distributions.constraints
@@ -171,7 +170,7 @@ class GAE(nn.Module):
 class ValueNorm(nn.Module):
     def __init__(
         self,
-        input_shape: Union[int, Iterable],
+        input_shape: int | Iterable,
         beta=0.995,
         epsilon=1e-5,
     ) -> None:

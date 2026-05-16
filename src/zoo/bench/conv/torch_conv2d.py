@@ -29,7 +29,7 @@ class BenchConv2d(nn.Module):
         kernel_size: int = 3,
         act: Literal["relu", "gelu", "silu", "elu", "sigmoid", "tanh"] | None = None,
     ):
-        super(BenchConv2d, self).__init__()
+        super().__init__()
         nets = []
         for _ in range(layers):
             nets.append(

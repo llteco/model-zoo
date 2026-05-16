@@ -5,7 +5,7 @@ import argparse
 import importlib
 import types
 from pathlib import Path
-from typing import Any, Optional, Union, get_args, get_origin
+from typing import Any, Union, get_args, get_origin
 
 import torch
 
@@ -88,7 +88,7 @@ class InputShape(argparse.Action):
         _parser: argparse.ArgumentParser,
         namespace: argparse.Namespace,
         values,
-        _option_string: Optional[str] = None,
+        _option_string: str | None = None,
     ) -> None:
         if isinstance(values, list):
             parsed = [InputShape(value) for value in values]
@@ -131,7 +131,7 @@ class InputShape(argparse.Action):
         else:
             self.shape = []
 
-    def to_tensor(self, device: Optional[str] = None) -> torch.Tensor:
+    def to_tensor(self, device: str | None = None) -> torch.Tensor:
         """创建对应的 torch.Tensor。
 
         Args:
