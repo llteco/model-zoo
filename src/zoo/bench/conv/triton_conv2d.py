@@ -332,7 +332,7 @@ class TritonConv2d(torch.nn.Module):
     def __init__(
         self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True
     ):
-        super(TritonConv2d, self).__init__()
+        super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size
@@ -357,7 +357,7 @@ class BenchTritonConv2d(torch.nn.Module):
         kernel_size: int = 3,
         act: str | None = None,
     ):
-        super(BenchTritonConv2d, self).__init__()
+        super().__init__()
         self.channels = channels
         self.layers = layers
         self.kernel_size = kernel_size

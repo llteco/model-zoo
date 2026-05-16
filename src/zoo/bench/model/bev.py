@@ -24,7 +24,7 @@ class ForwardProjection(LiftSplatShoot):
         depth: tuple[float, float, float] = grid_config["depth"],
         use_gemm: bool = False,
     ):
-        super(ForwardProjection, self).__init__(x, y, z, depth)
+        super().__init__(x, y, z, depth)
         self.cum_gemm = use_gemm
 
     @property

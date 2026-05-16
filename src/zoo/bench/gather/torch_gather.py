@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: UTF-8 -*-
 
-from typing import Literal, Optional
+from typing import Literal
 
 import torch
 
@@ -16,7 +16,7 @@ class BenchTorchGather(torch.nn.Module):
         self,
         dims: tuple[int, ...] = (1024, 1024, 1024),
         axis: int = 0,
-        seed: Optional[int] = None,
+        seed: int | None = None,
     ):
         super().__init__()
         if seed is not None:
@@ -41,7 +41,7 @@ class BenchGridSample(torch.nn.Module):
         mode: Literal["bilinear", "nearest", "bicubic"] = "bilinear",
         padding_mode: Literal["zeros", "border", "reflection"] = "zeros",
         align_corners: bool = False,
-        seed: Optional[int] = None,
+        seed: int | None = None,
     ):
         super().__init__()
         if seed is not None:

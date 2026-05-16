@@ -2,7 +2,8 @@
 # -*- coding: UTF-8 -*-
 
 import inspect
-from typing import Any, Callable, Dict, Iterator, List, Optional, Type
+from collections.abc import Callable, Iterator
+from typing import Any
 
 from prettytable import PrettyTable
 
@@ -18,7 +19,7 @@ class ParameterInfo:
     def __init__(
         self,
         name: str,
-        annotation: Optional[Type] = None,
+        annotation: type | None = None,
         default: Any = inspect.Parameter.empty,
     ):
         self.name = name
@@ -63,9 +64,9 @@ class RegistryMetadata:
     def __init__(
         self,
         name: str,
-        cls: Type,
-        init_signature: List[ParameterInfo],
-        forward_signature: List[ParameterInfo],
+        cls: type,
+        init_signature: list[ParameterInfo],
+        forward_signature: list[ParameterInfo],
     ):
         self.name = name
         self.cls = cls
@@ -82,7 +83,7 @@ class RegistryMetadata:
         )
 
     @staticmethod
-    def _format_signature(params: List[ParameterInfo]) -> str:
+    def _format_signature(params: list[ParameterInfo]) -> str:
         """将参数列表格式化为字符串"""
         param_strs = [param.to_string() for param in params]
         return f"({', '.join(param_strs)})"
@@ -109,10 +110,10 @@ class Registry:
             name: 注册表的名称
         """
         self.name = name
-        self._registry: Dict[str, Type] = {}
-        self._metadata: Dict[str, RegistryMetadata] = {}
+        self._registry: dict[str, type] = {}
+        self._metadata: dict[str, RegistryMetadata] = {}
 
-    def register(self, module_name: Optional[str] = None) -> Callable:
+    def register(self, module_name: str | None = None) -> Callable:
         """
         装饰器，用于注册一个class到注册表。
 
@@ -126,7 +127,7 @@ class Registry:
             TypeError: 如果被注册的class不是nn.Module的子类
         """
 
-        def decorator(cls: Type) -> Type:
+        def decorator(cls: type) -> type:
             # 验证是nn.Module
             if nn is not None and not issubclass(cls, nn.Module):
                 raise TypeError(
@@ -154,7 +155,7 @@ class Registry:
         return decorator
 
     @staticmethod
-    def _extract_signature(method: Callable) -> List[ParameterInfo]:
+    def _extract_signature(method: Callable) -> list[ParameterInfo]:
         """
         提取方法的签名信息。
 
@@ -195,7 +196,7 @@ class Registry:
             return []
 
     @classmethod
-    def _extract_metadata(cls, name: str, module_cls: Type) -> RegistryMetadata:
+    def _extract_metadata(cls, name: str, module_cls: type) -> RegistryMetadata:
         """
         从类中提取元数据信息。
 
@@ -216,7 +217,7 @@ class Registry:
             forward_signature=forward_sig,
         )
 
-    def get(self, name: str) -> Type:
+    def get(self, name: str) -> type:
         """
         从注册表中获取已注册的类。
 
@@ -250,7 +251,7 @@ class Registry:
             raise KeyError(f"'{name}' metadata not found in {self.name} registry")
         return self._metadata[name]
 
-    def list_all(self) -> Dict[str, Type]:
+    def list_all(self) -> dict[str, type]:
         """
         列出所有已注册的类。
 
