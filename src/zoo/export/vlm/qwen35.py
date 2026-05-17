@@ -152,6 +152,7 @@ def wrap_causal_conv1d(
         "trt_attention_replace",
         "trt_causal_conv1d_replace",
         "trt_gated_delta_rule_replace",
+        "fuse_int4_groupwise_gemm",
         "eliminate_nop_slice",
         "eliminate_nop_concat",
         "eliminate_nop_pad",
