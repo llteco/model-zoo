@@ -1,7 +1,8 @@
 #!/usr/bin/python
 # -*- coding: UTF-8 -*-
+import fnmatch
 import gc
-from itertools import chain
+from itertools import chain, product
 from unittest.mock import patch
 
 import torch
@@ -84,22 +85,27 @@ class Qwen3_5Vision(torch.nn.Module):
 FIXED_SHAPE_TEXT: dict = {
     "position_ids": [4, 1, 16],
     "attention_mask": [1, 16],
-    "full_attention_mask": [16, 1024],
+    "full_attention_mask": [1, 16, 1024],
     "inputs_embeds": [1, 16, 1024],
     "rope_rotary_cos_sin": [1, 16, 64],
     "context_lengths": [1],
     "kvcache_start_index": [1],
+    "*key_value": [1, 2, 2, 1024, 256],
 }
 
 
 @PASSES.register("reshape_text_model")
 def reshape_text_model(graph: OnnxGraph):
-    shape_info = FIXED_SHAPE_TEXT.copy()
-    for name in chain(graph.inputs, graph.outputs):
-        if "key_value" in name:
-            shape = graph.tensor_shape(name)
-            shape[-2] = 1024  # static cache length
-            shape_info[name] = shape
+    shape_info = {}
+    shape_wildcard = {}
+    for k, v in FIXED_SHAPE_TEXT.items():
+        if "*" in k or "?" in k:
+            shape_wildcard[k] = v
+        else:
+            shape_info[k] = v
+    for name, wildcard in product(chain(graph.inputs, graph.outputs), shape_wildcard):
+        if fnmatch.fnmatch(name, wildcard):
+            shape_info[name] = shape_wildcard[wildcard]
     return reshape_model(graph, shape_info=shape_info)
 
 
@@ -143,12 +149,15 @@ def wrap_causal_conv1d(
 
 
 @EXPORT.register("qwen3.5text")
-@export_post_process(
-    [
+@export_post_process
+class Qwen3_5Text(torch.nn.Module):
+    input_names = ("position_ids", "attention_mask", "inputs_embeds")
+    output_names = ("logits",)
+    fold_nodes_to_functions = False
+    passes = [
         "infer_shape",
         "fold_constant",
         "attention_add_kvcache",
-        "attention_add_mask",
         "trt_attention_replace",
         "trt_causal_conv1d_replace",
         "trt_gated_delta_rule_replace",
@@ -161,31 +170,33 @@ def wrap_causal_conv1d(
         "remove_unused_functions",
         "reshape_text_model",
     ]
-)
-class Qwen3_5Text(torch.nn.Module):
-    input_names = ("position_ids", "attention_mask", "inputs_embeds")
-    output_names = ("logits",)
-    fold_nodes_to_functions = False
 
     def __init__(
         self,
         model_name="Qwen/Qwen3.5-0.8B",
         seq_len: int = 256,
+        capacity: int = 1024,
         use_lm_head: bool = False,
+        use_full_attention_mask: bool = False,
         *,
         num_hidden_layers: int | None = None,  # debug purpose
     ):
         super().__init__()
+        self.passes = Qwen3_5Text.passes.copy()
         self.seq_len = seq_len
         self.use_lm_head = use_lm_head
         if not use_lm_head:
             self.output_names = ("hidden_states",)
+        if use_full_attention_mask:
+            self.passes.insert(3, "attention_add_mask")
         # fix model shape
-        FIXED_SHAPE_TEXT["position_ids"][2] = self.seq_len
-        FIXED_SHAPE_TEXT["attention_mask"][1] = self.seq_len
-        FIXED_SHAPE_TEXT["full_attention_mask"][0] = self.seq_len
-        FIXED_SHAPE_TEXT["inputs_embeds"][1] = self.seq_len
-        FIXED_SHAPE_TEXT["rope_rotary_cos_sin"][1] = self.seq_len
+        FIXED_SHAPE_TEXT["position_ids"][2] = seq_len
+        FIXED_SHAPE_TEXT["attention_mask"][1] = seq_len
+        FIXED_SHAPE_TEXT["full_attention_mask"][1] = seq_len
+        FIXED_SHAPE_TEXT["full_attention_mask"][2] = capacity
+        FIXED_SHAPE_TEXT["inputs_embeds"][1] = seq_len
+        FIXED_SHAPE_TEXT["rope_rotary_cos_sin"][1] = seq_len
+        FIXED_SHAPE_TEXT["*key_value"][-2] = capacity
         register_attention_opsets()
         register_mamba_opsets()
         register_recurrent_opsets()

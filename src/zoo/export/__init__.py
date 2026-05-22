@@ -4,7 +4,7 @@ import os
 from contextlib import suppress
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Literal
+from typing import Literal, Sequence
 
 import onnx
 import torch
@@ -40,7 +40,7 @@ def create_module(module_name: str, constructors: list[str]) -> nn.Module:
     return EXPORT.get(module_name)(**dict(args._get_kwargs()))
 
 
-def export_post_process(passes: list[str]):
+def export_post_process(func_or_passes: list[str] | Callable):
     """Inject a default post_process helper into a class."""
 
     def _wrapper(cls):
@@ -57,6 +57,11 @@ def export_post_process(passes: list[str]):
             external_directory=None,
             **kwargs,
         ):
+            passes = getattr(
+                cls,
+                "passes",
+                func_or_passes if isinstance(func_or_passes, Sequence) else [],
+            )
             pm = PassManager(passes)
             graph = OnnxGraph(onnx.load_model(onnx_file, load_external_data=False))
             with TemporaryDirectory() as temp_dir:
@@ -76,7 +81,9 @@ def export_post_process(passes: list[str]):
         setattr(cls, "post_process", post_process)
         return cls
 
-    return _wrapper
+    if isinstance(func_or_passes, Sequence):
+        return _wrapper
+    return _wrapper(func_or_passes)
 
 
 def i2i_f2f(t: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
