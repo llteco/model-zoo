@@ -1,10 +1,11 @@
 import argparse
 import gc
 import os
+from collections.abc import Callable, Sequence
 from contextlib import suppress
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Literal, Sequence
+from typing import Literal
 
 import onnx
 import torch

@@ -14,6 +14,7 @@ from onnxifier import OnnxGraph
 from onnxifier.passes import PASSES
 from onnxifier.passes.globals.reshape import reshape_model
 from transformers import AutoProcessor
+from transformers.models.qwen3_5.configuration_qwen3_5 import Qwen3_5Config
 from transformers.models.qwen3_5.modeling_qwen3_5 import (
     Qwen3_5ForConditionalGeneration,
     Qwen3_5GatedDeltaNet,
@@ -87,7 +88,7 @@ FIXED_SHAPE_TEXT: dict = {
     "attention_mask": [1, 16],
     "full_attention_mask": [1, 16, 1024],
     "inputs_embeds": [1, 16, 1024],
-    "rope_rotary_cos_sin": [1, 16, 64],
+    "rope_rotary_cos_sin": [1, 1024, 64],
     "context_lengths": [1],
     "kvcache_start_index": [1],
     "*key_value": [1, 2, 2, 1024, 256],
@@ -174,17 +175,19 @@ class Qwen3_5Text(torch.nn.Module):
     def __init__(
         self,
         model_name="Qwen/Qwen3.5-0.8B",
-        seq_len: int = 256,
-        capacity: int = 1024,
+        seq_len: int = 256,  # prefill chunked size
+        capacity: int | None = 1024,  # max context length
         use_lm_head: bool = False,
         use_full_attention_mask: bool = False,
         *,
         num_hidden_layers: int | None = None,  # debug purpose
     ):
         super().__init__()
+        config = Qwen3_5Config.from_pretrained(model_name)
         self.passes = Qwen3_5Text.passes.copy()
         self.seq_len = seq_len
         self.use_lm_head = use_lm_head
+        self.capacity = capacity or config.get_text_config().max_position_embeddings
         if not use_lm_head:
             self.output_names = ("hidden_states",)
         if use_full_attention_mask:
@@ -195,7 +198,7 @@ class Qwen3_5Text(torch.nn.Module):
         FIXED_SHAPE_TEXT["full_attention_mask"][1] = seq_len
         FIXED_SHAPE_TEXT["full_attention_mask"][2] = capacity
         FIXED_SHAPE_TEXT["inputs_embeds"][1] = seq_len
-        FIXED_SHAPE_TEXT["rope_rotary_cos_sin"][1] = seq_len
+        FIXED_SHAPE_TEXT["rope_rotary_cos_sin"][1] = capacity
         FIXED_SHAPE_TEXT["*key_value"][-2] = capacity
         register_attention_opsets()
         register_mamba_opsets()
