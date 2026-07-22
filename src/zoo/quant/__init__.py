@@ -1,14 +1,12 @@
 import argparse
 import os
 from pathlib import Path
-from typing import Callable, Literal, override
+from typing import Literal
 
-import torch.nn as nn
 from onnxifier.logger import set_level
 
 from ..registry import Registry
 from ..utils import auto_import, get_argparse_config
-
 
 QUANT = Registry("QUANT")
 
