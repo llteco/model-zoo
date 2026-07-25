@@ -28,19 +28,20 @@ zoo-trace = "zoo.trace.__main__:main"
 
 [project.optional-dependencies]
 cpu = [
-    "torch<2.11",
+    "torch",
     "torchaudio",
     "torchvision",
     "triton-windows; sys_platform == 'win32'",
 ]
 cuda = [
-    "torch<2.11",
+    "cuda-python>=12.9.4",
+    "torch>2.11",
     "torchaudio",
     "torchvision",
     "triton-windows; sys_platform == 'win32'",
     "nvidia-modelopt[hf]>=0.40",
 ]
-xpu = ["torch<2.11", "torchaudio", "torchvision", "pytorch-triton-xpu"]
+xpu = ["torch", "torchaudio", "torchvision", "pytorch-triton-xpu"]
 
 [dependency-groups]
 dev = ["pyright>=1.1.408", "ruff>=0.15.8"]
@@ -111,11 +112,6 @@ explicit = true
 [[tool.uv.index]]
 name = "pytorch-cuda130"
 url = "https://download.pytorch.org/whl/cu130"
-explicit = true
-
-[[tool.uv.index]]
-name = "pytorch-cuda131"
-url = "https://download.pytorch.org/whl/cu131"
 explicit = true
 
 [tool.uv]

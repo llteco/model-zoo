@@ -78,6 +78,18 @@ def export_post_process(func_or_passes: list[str] | Callable):
                     if not external_data:
                         graph = PassManager(["restore_external_data"]).optimize(graph)
                 graph.save(onnx_file)
+                # hyperonnx dumps <Type>_combined.onnx before functions are
+                # composed into the graph; overwrite it with the post-processed
+                # model so the combined artifact keeps its FunctionProtos.
+                # Inline external data: downstream tools may copy the bare
+                # .onnx without its sidecar.
+                if external_directory:
+                    for combined in Path(external_directory).glob("*_combined.onnx"):
+                        onnx.save_model(
+                            onnx.load_model(onnx_file),
+                            combined,
+                            save_as_external_data=False,
+                        )
 
         setattr(cls, "post_process", post_process)
         return cls
@@ -154,6 +166,7 @@ def export(
         external_data=external_data,
         external_directory=external_directory,
         hiera=getattr(model, "hier", None) if export_with_hier else None,
+        compile_hier=getattr(model, "compile_hier", None) if export_with_hier else None,
         input_names=getattr(model, "input_names", None),
         output_names=getattr(model, "output_names", None),
         fold_nodes_to_functions=getattr(model, "fold_nodes_to_functions", True),
