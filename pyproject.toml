@@ -28,19 +28,19 @@ zoo-trace = "zoo.trace.__main__:main"
 
 [project.optional-dependencies]
 cpu = [
-    "torch<2.11",
+    "torch>=2.11,<2.12",
     "torchaudio",
     "torchvision",
     "triton-windows; sys_platform == 'win32'",
 ]
 cuda = [
-    "torch<2.11",
+    "torch>=2.11,<2.12",
     "torchaudio",
     "torchvision",
     "triton-windows; sys_platform == 'win32'",
     "nvidia-modelopt[hf]>=0.40",
 ]
-xpu = ["torch<2.11", "torchaudio", "torchvision", "pytorch-triton-xpu"]
+xpu = ["torch>=2.11,<2.12", "torchaudio", "torchvision", "pytorch-triton-xpu"]
 
 [dependency-groups]
 dev = ["pyright>=1.1.408", "ruff>=0.15.8"]
