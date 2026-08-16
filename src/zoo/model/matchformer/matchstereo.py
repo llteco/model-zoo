@@ -21,9 +21,11 @@ DEFAULT_CHECKPOINT = (
 
 def init_coords(ref):
     B, H, W, _ = ref.shape
+    # fp32 arange + cast: legacy TorchScript ONNX export fails with
+    # "tensor does not have a device" on fp16 arange with dynamic end
     coords = torch.meshgrid(
-        torch.arange(H, device=ref.device, dtype=ref.dtype),
-        torch.arange(W, device=ref.device, dtype=ref.dtype),
+        torch.arange(H, device=ref.device).to(ref.dtype),
+        torch.arange(W, device=ref.device).to(ref.dtype),
         indexing="ij",
     )
     coords = torch.stack(coords[::-1], dim=-1)
@@ -382,12 +384,12 @@ class GlobalCorrelation(nn.Module):
     def _optimal_transport(self, attn):
         w = attn.shape[2]
         dtype = attn.dtype
-        marginal = torch.cat(
-            [
-                torch.ones([w], device=attn.device),
-                torch.tensor([w], device=attn.device),
-            ]
-        ) / (2 * w)
+        # no torch.tensor([w]) in the cat: it becomes a CPU constant during
+        # TorchScript tracing and breaks legacy ONNX export's constant
+        # folding with a cuda/cpu device mismatch
+        marginal = torch.ones(w + 1, device=attn.device, dtype=dtype)
+        marginal[-1] = w
+        marginal = marginal / (2 * w)
         log_marginal = marginal.log().reshape(1, 1, w + 1)
         attn = F.pad(attn, (0, 1, 0, 1), "constant", 0)
         attn = self._sinkhorn(attn, log_marginal, log_marginal)
