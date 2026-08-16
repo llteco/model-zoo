@@ -2,9 +2,7 @@
 # -*- coding: UTF-8 -*-
 
 import argparse
-import importlib
 import types
-from pathlib import Path
 from typing import Any, Union, get_args, get_origin
 
 import torch
@@ -216,18 +214,3 @@ def get_argparse_config(annotation: Any, default_value: Any) -> dict:
         else:
             return {"action": "store_true"}
     return {}
-
-
-def auto_import(work_dir: Path, module_name: str, package: str | None = None):
-    """Import from `module_name` directory sources.
-
-    Args:
-        work_dir (Path): The root directory to search for modules, e.g., "src/zoo".
-        module_name (str): The name of the module to import from, e.g., "conv".
-        package (str | None): The package name to use for relative imports.
-            If None, it will be inferred from the module_name.
-    """
-    for f in work_dir.glob(f"{module_name}/**/*.py"):
-        f = f.relative_to(work_dir).with_suffix("").as_posix()
-        f = f.replace("/", ".")
-        importlib.import_module(f".{f}", package)

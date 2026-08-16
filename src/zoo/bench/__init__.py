@@ -10,7 +10,7 @@ from typing import Literal
 import torch
 import torch.nn as nn
 
-from ..utils import InputShape, auto_import, get_argparse_config
+from ..utils import InputShape, get_argparse_config
 from .registry import BENCH
 
 
@@ -137,5 +137,4 @@ def benchmark(
     return times
 
 
-for module in ("conv", "sdpa", "gemm", "mlp", "gather", "scatter", "vadd", "model"):
-    auto_import(Path(__file__).parent, module, __package__)
+BENCH.add_lazy_sources(Path(__file__).parent, __package__ or __name__)

@@ -12,9 +12,11 @@ import torch
 from onnxifier.logger import debug, error, info, trace, warning
 
 from ..registry import Registry
-from ..utils import auto_import, get_argparse_config
+from ..utils import get_argparse_config
 
 TRACE = Registry("TRACE")
+
+TRACE.add_lazy_sources(Path(__file__).parent, __package__ or __name__)
 
 
 def create_module(module_name: str, constructors: list[str]):
@@ -157,7 +159,7 @@ def trace_model(
 
     if module_name not in TRACE:
         error(f"Module '{module_name}' not found in TRACE registry.")
-        error(f"Available modules: {list(TRACE.list_all().keys())}")
+        error(f"Available modules: {TRACE.available_names()}")
         return
 
     # Instantiate model
@@ -198,7 +200,3 @@ def trace_model(
     else:
         warning("%s doesn't implement process_outputs method")
         info("Raw outputs: [%s]", outputs)
-
-
-for module in ("vlm",):
-    auto_import(Path(__file__).parent, module, __package__)

@@ -15,7 +15,7 @@ Example:
 """
 
 parser = argparse.ArgumentParser(usage=USAGE)
-parser.add_argument("module", nargs="?", choices=TRACE.list_all().keys())
+parser.add_argument("module", nargs="?", choices=TRACE.available_names())
 parser.add_argument("--text", "-t", default="", help="Text prompt for the model")
 parser.add_argument("--image", "-i", default=None, help="Path to input image")
 parser.add_argument("--video", "-v", default=None, help="Path to input video")

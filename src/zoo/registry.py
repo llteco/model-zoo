@@ -1,8 +1,11 @@
 #!/usr/bin/python
 # -*- coding: UTF-8 -*-
 
+import ast
+import importlib
 import inspect
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import Any
 
 from prettytable import PrettyTable
@@ -112,6 +115,7 @@ class Registry:
         self.name = name
         self._registry: dict[str, type] = {}
         self._metadata: dict[str, RegistryMetadata] = {}
+        self._lazy: dict[str, str] = {}
 
     def register(self, module_name: str | None = None) -> Callable:
         """
@@ -153,6 +157,54 @@ class Registry:
             return cls
 
         return decorator
+
+    def add_lazy_sources(self, work_dir: Path, package: str) -> None:
+        """Scan `work_dir` Python sources for registrations without importing.
+
+        Records every literal `<{self.name}>.register("name")` call as a
+        name -> module mapping; the module is imported on first access via
+        get/get_metadata/print, so submodules load only when used.
+
+        ponytail: static scan sees only literal `<registry>.register("name")`
+        calls with the receiver spelled exactly like the registry name; aliased
+        or dynamic registrations still need an explicit import.
+        """
+        for file in sorted(work_dir.rglob("*.py")):
+            rel = (
+                file.relative_to(work_dir).with_suffix("").as_posix().replace("/", ".")
+            )
+            module = f"{package}.{rel}"
+            for node in ast.walk(ast.parse(file.read_text(encoding="utf-8"))):
+                if not (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "register"
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == self.name
+                    and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)
+                ):
+                    continue
+                reg_name = node.args[0].value
+                known = self._lazy.get(reg_name)
+                if known is not None and known != module:
+                    raise ValueError(
+                        f"Name '{reg_name}' is registered in both {known} and {module}"
+                    )
+                self._lazy[reg_name] = module
+
+    def _ensure_loaded(self, name: str) -> None:
+        """Import the module providing `name`, if scanned but not yet loaded."""
+        if name in self._registry:
+            return
+        module = self._lazy.pop(name, None)
+        if module is not None:
+            importlib.import_module(module)
+
+    def available_names(self) -> list[str]:
+        """All known names (loaded plus scanned), without importing anything."""
+        return sorted({*self._registry, *self._lazy})
 
     @staticmethod
     def _extract_signature(method: Callable) -> list[ParameterInfo]:
@@ -230,10 +282,11 @@ class Registry:
         Raises:
             KeyError: 如果类未被注册
         """
+        self._ensure_loaded(name)
         if name not in self._registry:
             raise KeyError(
                 f"'{name}' not found in {self.name} registry. "
-                f"Available: {list(self._registry.keys())}"
+                f"Available: {self.available_names()}"
             )
         return self._registry[name]
 
@@ -247,6 +300,7 @@ class Registry:
         Returns:
             RegistryMetadata对象
         """
+        self._ensure_loaded(name)
         if name not in self._metadata:
             raise KeyError(f"'{name}' metadata not found in {self.name} registry")
         return self._metadata[name]
@@ -270,8 +324,9 @@ class Registry:
         Raises:
             KeyError: 如果模型未被注册
         """
+        self._ensure_loaded(name)
         if name not in self._metadata:
-            available = list(self._registry.keys())
+            available = self.available_names()
             print(f"Error: '{name}' not found in {self.name} registry.")
             print(f"Available models: {', '.join(available)}")
             return
@@ -284,8 +339,8 @@ class Registry:
         print()
 
     def __contains__(self, name: str) -> bool:
-        """检查名称是否已注册"""
-        return name in self._registry
+        """检查名称是否已注册（不触发子模块导入）"""
+        return name in self._registry or name in self._lazy
 
     def __len__(self) -> int:
         """获取已注册类的数量"""
