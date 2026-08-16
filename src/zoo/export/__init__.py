@@ -170,6 +170,7 @@ def export(
         input_names=getattr(model, "input_names", None),
         output_names=getattr(model, "output_names", None),
         fold_nodes_to_functions=getattr(model, "fold_nodes_to_functions", True),
+        cutlass_tune=getattr(model, "cutlass_tune", True),
     )
     if apply_post_process and callable(getattr(model, "post_process", None)):
         fn = getattr(model, "post_process")

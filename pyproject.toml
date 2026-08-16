@@ -17,10 +17,6 @@ dependencies = [
 ]
 
 [project.scripts]
-bench = "zoo.bench.__main__:main"
-export = "zoo.export.__main__:main"
-quant = "zoo.quant.__main__:main"
-trace = "zoo.trace.__main__:main"
 zoo-bench = "zoo.bench.__main__:main"
 zoo-export = "zoo.export.__main__:main"
 zoo-quant = "zoo.quant.__main__:main"

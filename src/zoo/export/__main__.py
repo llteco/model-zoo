@@ -27,7 +27,7 @@ parser.add_argument("--dtype", choices=["float16", "bfloat16", "float32"])
 parser.add_argument("--float16", "-f16", nargs="?", dest="dtype", const="float16")
 parser.add_argument("--bfloat16", "-bf16", nargs="?", dest="dtype", const="bfloat16")
 parser.add_argument("--float32", "-f32", nargs="?", dest="dtype", const="float32")
-parser.add_argument("--external-directory", default=None)
+parser.add_argument("--external-directory", "-d", default=None)
 parser.add_argument(
     "--export-with-hier",
     "-hier",

@@ -14,12 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import torch
+import torchvision as tv
 
 from zoo.model.matchformer.matchstereo import (
-    AttentionBlock,
-    GlobalCorrelation,
+    DEFAULT_CHECKPOINT,
     MatchAttentionBlock,
+    MatchAttentionLayer,
     MatchStereo,
     MetaFormer,
 )
@@ -29,20 +29,42 @@ from .. import EXPORT
 
 @EXPORT.register("matchstereo")
 class ExportMatchStereo(MatchStereo):
-    """Exportable MatchStereo (tiny) with pad-to-32 and compile hierarchy."""
+    """Exportable MatchStereo (tiny) with split MatchAttentionBlock.
 
-    # profiled @384x640 fp32 (eager -> compiled ms): MetaFormer 3.1->1.6,
-    # AttentionBlock 1.3->0.8, GlobalCorrelation 1.4->0.2, MatchAttentionBlock
-    # 13.7->3.7; UpConv regresses on 2/3 instances (0.18->0.41, 0.16->0.20),
-    # stays plain ONNX
-    compile_hier = [MetaFormer, AttentionBlock, GlobalCorrelation, MatchAttentionBlock]
+    Each MatchAttentionLayer is decomposed into 8 extern-free glue blocks
+    (phases between Linear/Conv boundaries).  compile_hier targets the glue
+    types so hyperonnx captures each as a pure-triton kernel bundle.
+    """
+
+    hier = [MetaFormer, MatchAttentionBlock]
+    compile_hier = [MatchAttentionLayer]
     fold_nodes_to_functions = False
+
+    def __init__(
+        self,
+        refine_win_rs=[1, 1, 1, 1],
+        refine_nums=[8, 8, 8, 2],
+        num_heads=[4, 4, 4, 4],
+        mlp_ratios=[2, 2, 2, 2],
+        checkpoint=str(DEFAULT_CHECKPOINT),
+    ):
+        super().__init__(
+            refine_win_rs=refine_win_rs,
+            refine_nums=refine_nums,
+            num_heads=num_heads,
+            mlp_ratios=mlp_ratios,
+            checkpoint=checkpoint,
+        )
 
     @property
     def default_inputs(self):
+        img0_file = DEFAULT_CHECKPOINT.parent / "im0_left.png"
+        img1_file = DEFAULT_CHECKPOINT.parent / "im0_right.png"
+        img0 = tv.io.decode_image(img0_file, mode=tv.io.ImageReadMode.RGB)[None]
+        img1 = tv.io.decode_image(img1_file, mode=tv.io.ImageReadMode.RGB)[None]
         return {
-            "img0": torch.empty(1, 3, 384, 640),
-            "img1": torch.empty(1, 3, 384, 640),
+            "img0": img0.float(),
+            "img1": img1.float(),
         }
 
     @property
