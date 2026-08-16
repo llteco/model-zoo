@@ -15,7 +15,7 @@ class ResNet18(torch.nn.Module):
 
     def forward(self, img):
         with torch.inference_mode():
-          return self.model(img)
+            return self.model(img)
 
     @property
     def default_inputs(self):

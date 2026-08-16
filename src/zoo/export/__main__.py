@@ -16,7 +16,7 @@ Example:
 """
 
 parser = argparse.ArgumentParser(usage=USAGE)
-parser.add_argument("module", nargs="?", choices=EXPORT.list_all().keys())
+parser.add_argument("module", nargs="?", choices=EXPORT.available_names())
 parser.add_argument("input_shapes", nargs="*", action=InputShape)
 parser.add_argument("--dynamo", action="store_true")
 parser.add_argument("--opset-version", "-v", type=int, default=23)

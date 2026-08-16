@@ -6,9 +6,11 @@ from typing import Literal
 from onnxifier.logger import set_level
 
 from ..registry import Registry
-from ..utils import auto_import, get_argparse_config
+from ..utils import get_argparse_config
 
 QUANT = Registry("QUANT")
+
+QUANT.add_lazy_sources(Path(__file__).parent, __package__ or __name__)
 
 
 def create_module(module_name: str, constructors: list[str]):
@@ -56,7 +58,3 @@ def quant(
     model = create_module(str(model_id), constructors or [])
     model = model.to(device=device)
     model.quant(output_dir)
-
-
-for module in ("vision", "vlm", "asr", "tts", "llm"):
-    auto_import(Path(__file__).parent, module, __package__)

@@ -17,7 +17,7 @@ Example:
 """
 
 parser = argparse.ArgumentParser(usage=USAGE)
-parser.add_argument("module", nargs="?", choices=BENCH.list_all().keys())
+parser.add_argument("module", nargs="?", choices=BENCH.available_names())
 parser.add_argument("input_shapes", nargs="*", action=InputShape)
 parser.add_argument("--warmup", type=int, default=5)
 parser.add_argument("--iters", type=int, default=10)

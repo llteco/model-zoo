@@ -15,9 +15,11 @@ from onnxifier import OnnxGraph, PassManager
 from onnxifier.utils import chdir
 
 from ..registry import Registry
-from ..utils import InputShape, auto_import, get_argparse_config
+from ..utils import InputShape, get_argparse_config
 
 EXPORT = Registry("EXPORT")
+
+EXPORT.add_lazy_sources(Path(__file__).parent, __package__ or __name__)
 
 
 def create_module(module_name: str, constructors: list[str]) -> nn.Module:
@@ -183,7 +185,3 @@ def export(
             external_data=external_data,
             external_directory=external_directory,
         )
-
-
-for module in ("vision", "vlm", "asr", "tts"):
-    auto_import(Path(__file__).parent, module, __package__)

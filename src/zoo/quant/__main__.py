@@ -13,7 +13,7 @@ Example:
 """
 
 parser = argparse.ArgumentParser(usage=USAGE)
-parser.add_argument("module", nargs="?", choices=QUANT.list_all().keys())
+parser.add_argument("module", nargs="?", choices=QUANT.available_names())
 parser.add_argument(
     "--recipe",
     "-r",
