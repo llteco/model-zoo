@@ -1,6 +1,7 @@
 import argparse
 import gc
 import os
+import shutil
 from collections.abc import Callable, Sequence
 from contextlib import suppress
 from pathlib import Path
@@ -159,29 +160,52 @@ def export(
             inputs = [i2i_f2f(i, dtype) if hasattr(i, "to") else i for i in inputs]
     else:
         inputs = []
-    export_hyper_onnx(
-        model,
-        tuple(inputs),
-        f"{module_name}.onnx",
-        opset_version=opset_version,
-        dynamo=dynamo,
-        external_data=external_data,
-        external_directory=external_directory,
-        hiera=getattr(model, "hier", None) if export_with_hier else None,
-        compile_hier=getattr(model, "compile_hier", None) if export_with_hier else None,
-        input_names=getattr(model, "input_names", None),
-        output_names=getattr(model, "output_names", None),
-        fold_nodes_to_functions=getattr(model, "fold_nodes_to_functions", True),
-        cutlass_tune=getattr(model, "cutlass_tune", True),
-    )
-    if apply_post_process and callable(getattr(model, "post_process", None)):
-        fn = getattr(model, "post_process")
-        del model
-        gc.collect()
-        fn(
+    hier_tmpdir: TemporaryDirectory | None = None
+    if export_with_hier and external_directory is None:
+        # Decouple -hier from -d: the intermediate sub-models go to a scratch
+        # directory; kernel bundles are copied to pwd afterwards and the
+        # temporary onnx files are dropped.
+        hier_tmpdir = TemporaryDirectory(prefix="zoo_hier_")
+        external_directory = hier_tmpdir.name
+    try:
+        export_hyper_onnx(
+            model,
+            tuple(inputs),
             f"{module_name}.onnx",
             opset_version=opset_version,
             dynamo=dynamo,
             external_data=external_data,
             external_directory=external_directory,
+            hiera=getattr(model, "hier", None) if export_with_hier else None,
+            compile_hier=(
+                getattr(model, "compile_hier", None) if export_with_hier else None
+            ),
+            input_names=getattr(model, "input_names", None),
+            output_names=getattr(model, "output_names", None),
+            fold_nodes_to_functions=getattr(model, "fold_nodes_to_functions", True),
+            cutlass_tune=getattr(model, "cutlass_tune", True),
         )
+        if apply_post_process and callable(getattr(model, "post_process", None)):
+            fn = getattr(model, "post_process")
+            del model
+            gc.collect()
+            fn(
+                f"{module_name}.onnx",
+                opset_version=opset_version,
+                dynamo=dynamo,
+                external_data=external_data,
+                external_directory=external_directory,
+            )
+    finally:
+        if hier_tmpdir:
+            bundle_src = Path(hier_tmpdir.name)
+            bundles = sorted(p.name for p in bundle_src.glob("*.kernels"))
+            for name in bundles:
+                shutil.copytree(
+                    bundle_src / name,
+                    Path.cwd() / name,
+                    dirs_exist_ok=True,
+                )
+            if bundles:
+                print(f"copied kernel bundles to {Path.cwd()}: {', '.join(bundles)}")
+            hier_tmpdir.cleanup()
