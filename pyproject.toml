@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "zoo"
 dynamic = ["version", "description"]
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "hyperonnx>=1.0.3",
     "onnxifier>=2.1.0",
