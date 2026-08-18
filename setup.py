@@ -1,23 +1,36 @@
-"""Fallback build script for toolchains that cannot read the
-``[tool.setuptools]`` / ``[project]`` tables from pyproject.toml
-(e.g. old pip or ``setup.py``-only flows on Python 3.10 targets).
-
-pyproject.toml stays authoritative; this file only mirrors the src-layout
-package discovery and fills the dynamic version/description fields.
-"""
-
 import re
 from pathlib import Path
 
 from setuptools import find_packages, setup
 
-_src = Path(__file__).parent / "src" / "zoo" / "__init__.py"
-_version = re.search(r'__version__ = "([^"]+)"', _src.read_text(encoding="utf-8"))
-_description = re.search(r'__description__ = "([^"]+)"', _src.read_text(encoding="utf-8"))
+
+def get_version():
+    init_file = Path(__file__).parent / "src" / "zoo" / "__init__.py"
+    with open(init_file, encoding="utf-8") as f:
+        content = f.read()
+    match = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', content, re.MULTILINE)
+    if match:
+        return match.group(1)
+    raise RuntimeError("Unable to find version string.")
+
+
+def get_description():
+    init_file = Path(__file__).parent / "src" / "zoo" / "__init__.py"
+    with open(init_file, encoding="utf-8") as f:
+        content = f.read()
+    match = re.search(
+        r'^__description__\s*=\s*["\']([^"\']+)["\']', content, re.MULTILINE
+    )
+    if match:
+        return match.group(1)
+    raise RuntimeError("Unable to find description string.")
+
 
 setup(
-    version=_version.group(1) if _version else "0.0.0",
-    description=_description.group(1) if _description else "",
+    version=get_version(),
+    description=get_description(),
+    # src-layout discovery: needed by legacy setup.py-only flows, which
+    # cannot read the [tool.setuptools] table from pyproject.toml
     package_dir={"": "src"},
     packages=find_packages(where="src"),
 )
