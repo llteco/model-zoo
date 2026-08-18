@@ -27,10 +27,11 @@ def get_description():
 
 
 setup(
+    # name and the layout kwargs matter for legacy toolchains (setuptools<61
+    # reads neither [project] nor [tool.setuptools] from pyproject.toml)
+    name="zoo",
     version=get_version(),
     description=get_description(),
-    # src-layout discovery: needed by legacy setup.py-only flows, which
-    # cannot read the [tool.setuptools] table from pyproject.toml
     package_dir={"": "src"},
     packages=find_packages(where="src"),
 )
