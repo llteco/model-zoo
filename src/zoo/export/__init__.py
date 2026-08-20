@@ -156,10 +156,10 @@ def export(
     elif hasattr(model, "default_inputs"):
         inputs = list(getattr(model, "default_inputs", {}).values())
         inputs = [i.to(device=device) if hasattr(i, "to") else i for i in inputs]
-        if dtype:
-            inputs = [i2i_f2f(i, dtype) if hasattr(i, "to") else i for i in inputs]
     else:
         inputs = []
+    if dtype:
+        inputs = [i2i_f2f(i, dtype) if hasattr(i, "to") else i for i in inputs]
     hier_tmpdir: TemporaryDirectory | None = None
     if export_with_hier and external_directory is None:
         # Decouple -hier from -d: the intermediate sub-models go to a scratch
