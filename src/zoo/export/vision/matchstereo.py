@@ -18,6 +18,7 @@ import torchvision as tv
 
 from zoo.model.matchformer.matchstereo import (
     DEFAULT_CHECKPOINT,
+    GlobalCorrelation,
     MatchAttentionBlock,
     MatchAttentionLayer,
     MatchStereo,
@@ -36,7 +37,7 @@ class ExportMatchStereo(MatchStereo):
     types so hyperonnx captures each as a pure-triton kernel bundle.
     """
 
-    hier = [MetaFormer, MatchAttentionBlock]
+    hier = [MetaFormer, MatchAttentionBlock, GlobalCorrelation]
     compile_hier = [MatchAttentionLayer]
     fold_nodes_to_functions = False
 

@@ -404,11 +404,17 @@ class GlobalCorrelation(nn.Module):
         B, H, W, _ = ref.shape
         correlation = torch.matmul(ref, tgt.transpose(-2, -1)) * self.scale
         keep = torch.tril(torch.ones(W, W, dtype=torch.bool, device=ref.device))
-        neg = -1e9 if correlation.dtype == torch.float32 else -1e4
+        # ponytail: a python float here becomes a float32 ONNX constant under
+        # export and forces a fp16->fp32 cast in Where; keep it dtype-matched.
+        fill_value = torch.tensor(
+            -1e9 if correlation.dtype == torch.float32 else -1e4,
+            dtype=correlation.dtype,
+            device=correlation.device,
+        )
         correlation = torch.cat(
             (
-                correlation.masked_fill(~keep, neg),
-                correlation.permute(0, 1, 3, 2).masked_fill(~keep.T, neg),
+                correlation.masked_fill(~keep, fill_value),
+                correlation.permute(0, 1, 3, 2).masked_fill(~keep.T, fill_value),
             ),
             dim=0,
         )
@@ -423,9 +429,12 @@ def disp_to_flow_for_fast_init(disp):
 
 
 def cal_disp(correlation, w):
+    # ponytail: legacy ONNX export emits linspace in float32 regardless of the
+    # requested fp16 dtype; build it fp32 then cast so the final chain stays
+    # fp16 instead of upcasting via x_grid - correspondence_left.
     x_grid = torch.linspace(
-        0, w - 1, w, device=correlation.device, dtype=correlation.dtype
-    )
+        0, w - 1, w, device=correlation.device, dtype=torch.float32
+    ).to(correlation.dtype)
     prob_max_ind = correlation.max(dim=-1)[1].unsqueeze(3)
     prob_l = 2
     masked_prob_pad = F.pad(correlation, (prob_l, prob_l), "constant", 0)
@@ -442,7 +451,9 @@ def cal_disp(correlation, w):
             for idx, weight in zip(offsets, weights)
         ),
     )
-    eps = 1e-4
+    # ponytail: 1e-4 as a python float becomes a float32 ONNX constant under
+    # export, upcasting the fp16 Div result to float32; keep it dtype-matched.
+    eps = torch.tensor(1e-4, dtype=correlation.dtype, device=correlation.device)
     correspondence_left = (correspondence_left + eps) / (conf + eps)
     disparity = -(x_grid.reshape(1, 1, w) - correspondence_left.squeeze(3)).unsqueeze(1)
     return disp_to_flow_for_fast_init(disparity.permute(0, 2, 3, 1))
