@@ -114,8 +114,10 @@ def _apply_mask_to_padding_states(hidden_states, attention_mask):
     """Mock apply_mask_to_padding_states without shape check."""
     if attention_mask is None:
         return hidden_states
-    dtype = hidden_states.dtype
-    return (hidden_states * attention_mask[:, :, None]).to(dtype)
+    # Cast the mask before Mul: dynamo type promotion of bool*bf16
+    # otherwise exports a Cast to complex128.
+    mask = attention_mask[:, :, None].to(hidden_states.dtype)
+    return hidden_states * mask
 
 
 def wrap_causal_conv1d(
