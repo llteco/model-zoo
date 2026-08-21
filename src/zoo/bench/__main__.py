@@ -24,6 +24,7 @@ parser.add_argument("--iters", type=int, default=10)
 parser.add_argument("--repeat", type=int, default=1)
 parser.add_argument("--reduce", choices=["mean", "median", "min", "max"])
 parser.add_argument("--compile", action="store_true")
+parser.add_argument("--cudagraph", "-cg", action="store_true")
 parser.add_argument("--half", action="store_true")
 parser.add_argument(
     "--device", type=str, default="cuda", choices=["cpu", "cuda", "xpu"]
@@ -48,6 +49,7 @@ def main(argv=None) -> int:
         args.input_shapes,
         constructors,
         dynamo=args.compile,
+        cudagraph=args.cudagraph,
         half=args.half,
         device=args.device,
         warmup=args.warmup,
