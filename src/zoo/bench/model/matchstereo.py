@@ -14,8 +14,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import torch
+
 from zoo.model.matchformer.matchstereo import MatchStereo
 
 from ..registry import BENCH
 
-BENCH.register("matchstereo")(MatchStereo)
+
+@BENCH.register("matchstereo")
+class BenchMatchStereo(MatchStereo):
+    @property
+    def default_inputs(self):
+        return {
+            "img0": torch.zeros([1, 3, 384, 640]),
+            "img1": torch.zeros([1, 3, 384, 640]),
+        }

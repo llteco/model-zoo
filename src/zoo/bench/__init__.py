@@ -71,6 +71,7 @@ def benchmark(
     constructors: list[str],
     dynamo: bool = False,
     half: bool = False,
+    cudagraph: bool = False,
     device: str = "cuda",
     warmup: int = 5,
     iters: int = 10,
@@ -85,6 +86,8 @@ def benchmark(
         constructors (list[str]): List of unparsed arguments for module __init__.
         dynamo (bool): Whether to use torch.compile for the module.
         half (bool): Whether to convert the module to half precision.
+        cudagraph (bool): Whether to capture and replay the module via CUDA
+            graph to eliminate kernel launch overhead. CUDA device only.
         device (str): The device to run the benchmark on ("cpu", "cuda", "xpu").
         warmup (int): Number of warmup iterations to run before timing.
         iters (int): Number of iterations to run for timing.
@@ -101,6 +104,10 @@ def benchmark(
     with torch.inference_mode():
         if input_shapes:
             inputs = [shape.to_tensor(device=device) for shape in input_shapes]
+            if half:
+                inputs = [
+                    i.half() if isinstance(i, torch.Tensor) else i for i in inputs
+                ]
         elif hasattr(model, "default_inputs"):
             inputs = list(getattr(model, "default_inputs", {}).values())
             for n, i in enumerate(inputs):
@@ -112,12 +119,27 @@ def benchmark(
             inputs = []
         for _ in range(warmup):
             model(*inputs)
+        if cudagraph:
+            if device != "cuda":
+                raise ValueError("--cudagraph requires --device cuda")
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph):
+                model(*inputs)
+
+            def step():
+                graph.replay()
+
+        else:
+
+            def step():
+                model(*inputs)
+
         times = []
         try:
             for _ in range(repeat):
                 with timer(torch.device(device), iters, times):
                     for _ in range(iters):
-                        model(*inputs)
+                        step()
         except KeyboardInterrupt:
             pass
     if not times:
