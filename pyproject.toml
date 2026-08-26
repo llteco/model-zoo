@@ -25,19 +25,17 @@ zoo-trace = "zoo.trace.__main__:main"
 [project.optional-dependencies]
 cpu = [
     "torch",
-    "torchaudio",
     "torchvision",
     "triton-windows; sys_platform == 'win32'",
 ]
 cuda = [
     "cuda-python>=12.9.4",
     "torch>2.11",
-    "torchaudio",
     "torchvision",
     "triton-windows; sys_platform == 'win32'",
     "nvidia-modelopt[hf]>=0.40",
 ]
-xpu = ["torch", "torchaudio", "torchvision", "pytorch-triton-xpu"]
+xpu = ["torch", "torchvision", "pytorch-triton-xpu"]
 
 [dependency-groups]
 dev = ["pyright>=1.1.408", "ruff>=0.15.8"]
@@ -72,17 +70,12 @@ disable = [
 [tool.uv.sources]
 torch = [
     { index = "pytorch-cpu", extra = "cpu" },
-    { index = "pytorch-cuda130", extra = "cuda" },
-    { index = "pytorch-xpu", extra = "xpu" },
-]
-torchaudio = [
-    { index = "pytorch-cpu", extra = "cpu" },
-    { index = "pytorch-cuda130", extra = "cuda" },
+    { index = "pytorch-cuda132", extra = "cuda" },
     { index = "pytorch-xpu", extra = "xpu" },
 ]
 torchvision = [
     { index = "pytorch-cpu", extra = "cpu" },
-    { index = "pytorch-cuda130", extra = "cuda" },
+    { index = "pytorch-cuda132", extra = "cuda" },
     { index = "pytorch-xpu", extra = "xpu" },
 ]
 pytorch-triton-xpu = { index = "pytorch-xpu" }
@@ -106,8 +99,8 @@ url = "https://download.pytorch.org/whl/cu129"
 explicit = true
 
 [[tool.uv.index]]
-name = "pytorch-cuda130"
-url = "https://download.pytorch.org/whl/cu130"
+name = "pytorch-cuda132"
+url = "https://download.pytorch.org/whl/cu132"
 explicit = true
 
 [tool.uv]
