@@ -538,6 +538,13 @@ class MatchAttention(nn.Module):
         self.q = nn.Linear(dim, self.attention_dim, bias=qkv_bias)
         self.k = nn.Linear(dim, self.attention_dim, bias=qkv_bias)
         self.v = nn.Linear(dim, self.attention_dim, bias=qkv_bias)
+        # Fused GEMM operands, (re)built after any state_dict load. In
+        # forward, projections with the same input run as one wide mm
+        # (+split views) — numerically identical per output element.
+        self.register_buffer("_fused_w", None, persistent=False)
+        self.register_buffer("_fused_b", None, persistent=False)
+        self.register_load_state_dict_post_hook(MatchAttention._rebuild_fused)
+        self._rebuild_fused()
         self.attn_drop = nn.Dropout(attn_drop)
         if self.cross:
             self.g = nn.Sequential(
@@ -556,6 +563,40 @@ class MatchAttention(nn.Module):
         max_offset_y = max_offset_y.clamp(min=self.win_r, max=H - 1 - self.win_r - 1e-3)
         return torch.cat((max_offset_x, max_offset_y), dim=-1).contiguous()
 
+    def _rebuild_fused(self, *args):
+        """Materialize fused projection weights from the live q/k/v params.
+
+        self-attention: one [3C, D] operand for q|k|v (all read the same
+        input); cross: a [2C, D] operand for k|v (q reads a different one).
+        """
+        with torch.no_grad():
+            if self.cross:
+                self._fused_w = torch.cat((self.k.weight, self.v.weight), 0)
+                self._fused_b = (
+                    None
+                    if self.k.bias is None
+                    else torch.cat((self.k.bias, self.v.bias), 0)
+                )
+            else:
+                self._fused_w = torch.cat(
+                    (self.q.weight, self.k.weight, self.v.weight), 0
+                )
+                self._fused_b = (
+                    None
+                    if self.q.bias is None
+                    else torch.cat((self.q.bias, self.k.bias, self.v.bias), 0)
+                )
+
+    def _project_qkv(self, ref, tgt):
+        if self.cross:
+            q = F.linear(ref, self.q.weight, self.q.bias)
+            kv = F.linear(tgt, self._fused_w, self._fused_b)
+            k, v = kv.split(self.attention_dim, dim=-1)
+            return q, k, v
+        qkv = F.linear(ref, self._fused_w, self._fused_b)
+        q, k, v = qkv.split(self.attention_dim, dim=-1)
+        return q, k, v
+
     def forward(self, x, max_offset):
         B, H, W, _ = x.shape
         N = H * W
@@ -567,7 +608,7 @@ class MatchAttention(nn.Module):
             tgt = torch.cat((tgt_, ref_), dim=0)
         else:
             ref, tgt = x, x
-        q, k, v = self.q(ref), self.k(tgt), self.v(tgt)
+        q, k, v = self._project_qkv(ref, tgt)
 
         max_offset = self.clamp_max_offset(max_offset, H, W)
         m_id = torch.floor(max_offset).to(torch.long)

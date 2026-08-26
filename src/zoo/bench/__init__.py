@@ -77,6 +77,7 @@ def benchmark(
     iters: int = 10,
     repeat: int = 1,
     reduce: Literal["mean", "median", "min", "max"] | None = None,
+    cudagraph: bool = False,
 ):
     """Benchmark the module under test.
 
@@ -100,7 +101,7 @@ def benchmark(
     if half:
         model = model.half()
     if dynamo:
-        model = torch.compile(model)
+        model = torch.compile(model, mode="reduce-overhead" if cudagraph else "default")
     with torch.inference_mode():
         if input_shapes:
             inputs = [shape.to_tensor(device=device) for shape in input_shapes]
