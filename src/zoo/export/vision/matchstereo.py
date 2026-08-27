@@ -25,10 +25,20 @@ from zoo.model.matchformer.matchstereo import (
     MetaFormer,
 )
 
-from .. import EXPORT
+from .. import EXPORT, export_post_process
 
 
 @EXPORT.register("matchstereo")
+@export_post_process(
+    [
+        # TensorRT folds fp16 Div-by-subnormal-constant into Mul(1/c); 1/c
+        # overflows fp16 and 0*inf emits NaN (all-NaN plain engines on TRT
+        # 10.16/11.1). field_scale[..., 1] is a decayed dead weight
+        # (~3.6e-07), so every layer tail hits this. See
+        # xpu-low-level/docs/trt_spec/tensorrt_version_compat.md §6.
+        "widen_subnormal_scaling",
+    ]
+)
 class ExportMatchStereo(MatchStereo):
     """Exportable MatchStereo (tiny) with split MatchAttentionBlock.
 
