@@ -48,7 +48,10 @@ class ExportMatchStereo(MatchStereo):
     """
 
     hier = [MetaFormer, MatchAttentionBlock, GlobalCorrelation]
-    compile_hier = [MatchAttentionLayer]
+    # GlobalCorrelation is also captured as a triton bundle: TRT 10.3's fp16
+    # fusion of its Sinkhorn tail emits NaN (see sub-module A/B in the 10.3
+    # compatibility investigation), so dispatch it to the replay plugin there.
+    compile_hier = [MatchAttentionLayer, GlobalCorrelation]
     fold_nodes_to_functions = False
 
     def __init__(
