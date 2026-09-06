@@ -914,8 +914,12 @@ class MatchStereo(nn.Module):
         mask = mask.view(B, 1, 9, factor, factor, H, W)
         mask = torch.softmax(mask, dim=2)
         up_flow = F.unfold(field * factor, (3, 3), padding=1)
-        up_flow = up_flow.view(B, D, 9, 1, 1, H, W)
-        up_flow = torch.sum(mask * up_flow, dim=2)
+        # Reduce over the last (contiguous) 9-axis: reducing over the strided
+        # axis (stride f*f*H*W) drops TRT's native kernel to ~12 GB/s
+        # (~1.5ms/frame on Orin for the final 96x160 upsample).
+        up_flow = up_flow.view(B, D, 9, 1, 1, H, W).movedim(2, -1)
+        mask = mask.movedim(2, -1)
+        up_flow = torch.sum(mask * up_flow, dim=-1)
         up_flow = up_flow.permute(0, 4, 2, 5, 3, 1)
         return up_flow.reshape(B, factor * H, factor * W, D).contiguous()
 

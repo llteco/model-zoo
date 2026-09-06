@@ -51,6 +51,10 @@ class ExportMatchStereo(MatchStereo):
     # GlobalCorrelation is also captured as a triton bundle: TRT 10.3's fp16
     # fusion of its Sinkhorn tail emits NaN (see sub-module A/B in the 10.3
     # compatibility investigation), so dispatch it to the replay plugin there.
+    # Encoder capture (MetaFormer or per-block MetaFormerBlock) measured net
+    # SLOWER on Orin: the plugin's extern conv path can't match native
+    # cuDNN/myelin (SIMT 2.7ms/conv; per-block dwconv+staging overhead
+    # outweighs the fusion wins). See MATCHSTEREO_HANDOFF.md.
     compile_hier = [MatchAttentionLayer, GlobalCorrelation]
     fold_nodes_to_functions = False
 
