@@ -72,3 +72,6 @@ tests/**/*.nsys-rep
 .opencode/
 .superpower
 .specify
+
+# resplat checkpoints: HF-downloadable caches (zoo.model.resplat.weights)
+models/resplat/*.pth
