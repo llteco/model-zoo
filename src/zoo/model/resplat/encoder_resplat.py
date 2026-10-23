@@ -209,9 +209,7 @@ class EncoderReSplat(nn.Module):
 
         Returns {"gaussians": Gaussians, "condition_features": [BV,C,lh,lw]}.
         """
-        device = context["image"].device
-        b, v, _, h, w = context["image"].shape
-        ld = self.cfg.latent_downsample
+        b, v = context["image"].shape[:2]
 
         # camera neighbour list for the depth predictor attention mask
         if v > 3:
@@ -233,6 +231,19 @@ class EncoderReSplat(nn.Module):
             extrinsics=context["extrinsics"],
             nn_matrix=cameras_dist_index,
         )
+        return self._forward_from_results(context, results_dict)
+
+    def _forward_from_results(self, context: dict, results_dict: dict) -> dict:
+        """Downstream of the depth predictor: gaussians + condition features.
+
+        Split out so the regressor engine (B) can call it with a results_dict
+        produced by ``MultiViewUniMatch._regress`` while the cost volume is
+        computed externally in torch.
+        """
+        device = context["image"].device
+        b, v, _, h, w = context["image"].shape
+        ld = self.cfg.latent_downsample
+
         depth = results_dict["depth_preds"][-1]  # [B, V, H, W]
 
         assert self.cfg.num_scales == 1

@@ -1,15 +1,17 @@
-"""ReSplat exports (stage-0 init + stage-1 delta-G refinement step).
+"""ReSplat exports (stage-0 with refinement init + stage-1 delta-G step).
 
 The rasterizer is external: ``resplat.stage1_step`` takes rendered context
-images as an input. The pointops kNN is exported directly as ``trt::KnnQuery``
-plugin nodes (see zoo.model.resplat.knn); post-process only declares the
-``trt`` opset import for the custom domain.
+images as an input. The refinement init (recurrent state + cached GT
+render-error features) is folded into ``resplat.stage0``. The pointops kNN
+is exported directly as ``trt::KnnQuery`` plugin nodes (see
+zoo.model.resplat.knn); post-process only declares the ``trt`` opset
+import for the custom domain.
 
 Examples:
-    uv -m zoo.export resplat.stage1_state_init --cuda
-    uv -m zoo.export resplat.stage1_step --cuda -d out/resplat
     uv -m zoo.export resplat.stage0 --cuda -d out/resplat
+    uv -m zoo.export resplat.stage1_step --cuda -d out/resplat
 """
+# pylint: disable=import-outside-toplevel,import-error,super-init-not-called
 
 import torch
 
@@ -18,8 +20,6 @@ from zoo.model.resplat.export_compat import install_export_compat
 from zoo.model.resplat.presets import build_encoder
 from zoo.model.resplat.wrappers import (
     Stage0Wrapper,
-    Stage1GtFeatures,
-    Stage1StateInit,
     Stage1StepWrapper,
 )
 
@@ -45,16 +45,23 @@ def _declare_trt_opset(onnx_path, **_) -> None:
 
 
 class _ResplatExportMixin:
-    def __init__(self, checkpoint: str = "", num_refine: int = 1):
-        # default: the HF-hosted pretrained checkpoint (verified cache)
-        if not checkpoint:
-            from zoo.model.resplat.weights import ensure_checkpoint
+    """Checkpoint resolution shared by the export registrations."""
 
+    @staticmethod
+    def _load_encoder(checkpoint: str, num_refine: int):
+        """Default to the HF-hosted pretrained checkpoint (verified cache)."""
+        from zoo.model.resplat.weights import ensure_checkpoint
+
+        if not checkpoint:
             checkpoint = str(ensure_checkpoint())
-        encoder = build_encoder(num_refine=num_refine, checkpoint=checkpoint)
-        super().__init__(encoder)
+        return build_encoder(num_refine=num_refine, checkpoint=checkpoint)
+
+    def __init__(self, checkpoint: str = "", num_refine: int = 1) -> None:
+        # cooperative super: the concrete wrapper base takes the encoder
+        super().__init__(self._load_encoder(checkpoint, num_refine))  # pyright: ignore[reportCallIssue]
 
     def post_process(self, f, **_):
+        """Declare the trt opset on the exported graph."""
         _declare_trt_opset(f)
 
 
@@ -73,6 +80,8 @@ def _poses(v: int) -> torch.Tensor:
 
 @EXPORT.register("resplat.stage0")
 class ExportResplatStage0(_ResplatExportMixin, Stage0Wrapper):
+    """images+poses -> initial Gaussians + refinement init (state, GT feats)."""
+
     input_names = ["image", "extrinsics", "intrinsics", "near", "far"]
     output_names = [
         "means",
@@ -82,11 +91,13 @@ class ExportResplatStage0(_ResplatExportMixin, Stage0Wrapper):
         "scales",
         "rotations",
         "rotations_unnorm",
-        "condition_features",
+        "state",
+        "input_view_features",
     ]
 
     @property
     def default_inputs(self):
+        """Deterministic sample feeds for the export CLI."""
         return {
             "image": torch.rand(1, V, 3, H, W),
             "extrinsics": _poses(V),
@@ -96,46 +107,20 @@ class ExportResplatStage0(_ResplatExportMixin, Stage0Wrapper):
         }
 
 
-@EXPORT.register("resplat.stage1_state_init")
-class ExportResplatStateInit(_ResplatExportMixin, Stage1StateInit):
-    input_names = ["condition_features"]
-    output_names = ["state"]
-
-    @property
-    def default_inputs(self):
-        return {"condition_features": torch.rand(V, 512, LH, LW)}
-
-
-@EXPORT.register("resplat.stage1_gtfeat")
-class ExportResplatGtFeatures(_ResplatExportMixin, Stage1GtFeatures):
-    def __init__(self, checkpoint: str = "", num_refine: int = 1):
-        if not checkpoint:
-            from zoo.model.resplat.weights import ensure_checkpoint
-
-            checkpoint = str(ensure_checkpoint())
-        encoder = build_encoder(num_refine=num_refine, checkpoint=checkpoint)
-        Stage1GtFeatures.__init__(self, encoder, V, (H, W))
-
-    @property
-    def default_inputs(self):
-        return {"context_image": torch.rand(1, V, 3, H, W)}
-
-    input_names = ["context_image"]
-    output_names = ["input_view_features"]
-
-
 @EXPORT.register("resplat.stage1_step")
 class ExportResplatStep(_ResplatExportMixin, Stage1StepWrapper):
-    def __init__(self, checkpoint: str = "", num_refine: int = 1):
-        if not checkpoint:
-            from zoo.model.resplat.weights import ensure_checkpoint
+    """One refinement step with the rasterizer cut out (rendered views in)."""
 
-            checkpoint = str(ensure_checkpoint())
-        encoder = build_encoder(num_refine=num_refine, checkpoint=checkpoint)
-        Stage1StepWrapper.__init__(self, encoder, V, (H, W))
+    def __init__(self, checkpoint: str = "", num_refine: int = 1) -> None:
+        # Stage1StepWrapper also takes (v, image_shape), which the mixin's
+        # cooperative super() chain cannot supply
+        Stage1StepWrapper.__init__(
+            self, self._load_encoder(checkpoint, num_refine), V, (H, W)
+        )
 
     @property
     def default_inputs(self):
+        """Deterministic sample feeds for the export CLI."""
         return {
             "rendered_color": torch.rand(1, V, 3, H, W),
             "context_image": torch.rand(1, V, 3, H, W),

@@ -12,6 +12,21 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 
+def _sdpa(q: Tensor, k: Tensor, v: Tensor, scale: float) -> Tensor:
+    """SDPA with a fused-attention-friendly ONNX export.
+
+    The stock SDPA symbolic derives the scale from runtime shape ops
+    (Slice/Sqrt/Div), which defeats TensorRT's fused-attention pattern match:
+    the [B, H, N, N] score matrix then materializes (1.79 GiB fp16 scratch at
+    N=15360). Expanding manually with a constant scale lets TRT fuse the
+    attention (~60 MiB). Eager keeps the memory-efficient SDPA kernel.
+    """
+    if torch.onnx.is_in_onnx_export():
+        scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+        return torch.matmul(scores.softmax(dim=-1), v)
+    return F.scaled_dot_product_attention(q, k, v)
+
+
 class Attention(nn.Module):
     def __init__(
         self,
@@ -41,7 +56,7 @@ class Attention(nn.Module):
         )
 
         q, k, v = qkv[0], qkv[1], qkv[2]
-        out = F.scaled_dot_product_attention(q, k, v)
+        out = _sdpa(q, k, v, self.scale)
         x = out.permute(0, 2, 1, 3).reshape(B, N, C)
 
         x = self.proj(x)
@@ -74,7 +89,7 @@ class MemEffAttention(Attention):
             k = k.permute(0, 2, 1, 3)
             v = v.permute(0, 2, 1, 3)
 
-            out = F.scaled_dot_product_attention(q, k, v)
+            out = _sdpa(q, k, v, self.scale)
             out = out.permute(0, 2, 1, 3).reshape(B, Nq, C)
             out = self.proj(out)
             out = self.proj_drop(out)
@@ -89,7 +104,7 @@ class MemEffAttention(Attention):
             k = k.permute(0, 2, 1, 3)
             v = v.permute(0, 2, 1, 3)
 
-            x = F.scaled_dot_product_attention(q, k, v)
+            x = _sdpa(q, k, v, self.scale)
             x = x.permute(0, 2, 1, 3).reshape(B, N, C)
 
             x = self.proj(x)

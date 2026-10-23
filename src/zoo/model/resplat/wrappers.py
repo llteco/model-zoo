@@ -1,13 +1,19 @@
 """Stage wrappers for ReSplat export.
 
-The full two-stage inference is covered by four graphs:
+The full two-stage inference is covered by two graphs:
 
-  Stage0Wrapper      initial Gaussian prediction (EncoderReSplat.forward)
-  Stage1StateInit    condition_features -> recurrent state (update_proj)
-  Stage1GtFeatures   GT context images -> cached input_view_features
+  Stage0Wrapper      initial Gaussian prediction with the refinement init
+                     folded in: images+poses -> Gaussians + recurrent
+                     state + cached GT render-error features (the former
+                     stage1_state_init / stage1_gtfeat graphs)
   Stage1StepWrapper  ONE refinement step with the rasterizer cut out:
                      rendered context images arrive as an input.
+
+Stage1StateInit / Stage1GtFeatures are the torch references for the two
+stage0 branches (used by the branch-level ONNX parity tests); they no
+longer export as standalone graphs.
 """
+# pylint: disable=unused-argument
 
 import torch
 import torch.nn.functional as F
@@ -25,16 +31,45 @@ def _normalize(x: torch.Tensor) -> torch.Tensor:
     return (x - mean) / std
 
 
+def _init_state(update_proj, condition_features: torch.Tensor) -> torch.Tensor:
+    """condition_features [BV, C, lh, lw] -> state [BV*lh*lw, C_state]."""
+    state = update_proj(condition_features)  # [BV, C_state, lh, lw]
+    bv, c, lh, lw = state.shape
+    return state.permute(0, 2, 3, 1).reshape(bv * lh * lw, c)
+
+
+def _gt_features(update_feature, image: torch.Tensor, latent_hw) -> torch.Tensor:
+    """[B, V, 3, H, W] in [0, 1] -> input_view_features [BV, 256, lh, lw]."""
+    b, v = image.shape[:2]
+    x = image.reshape(b * v, *image.shape[2:])
+    features = update_feature(_normalize(x))
+    out = []
+    for feat in features:
+        if feat.shape[-2:] != latent_hw:
+            feat = F.interpolate(
+                feat, size=latent_hw, mode="bilinear", align_corners=True
+            )
+        out.append(feat)
+    return torch.cat(out, dim=1)
+
+
 class Stage0Wrapper(nn.Module):
-    """Initial Gaussian prediction. Delegates to EncoderReSplat.forward
-    (built with num_refine > 0 so condition_features is returned)."""
+    """Initial Gaussian prediction with the refinement initialization folded
+    in. Must be built with num_refine > 0 (the update heads must exist);
+    the intermediate condition_features never leave the graph."""
 
     def __init__(self, encoder) -> None:
         super().__init__()
+        assert encoder.cfg.num_refine > 0, (
+            "stage0 folds in the refinement init; build with num_refine > 0"
+        )
         self.encoder = encoder
+        self.update_proj = encoder.update_proj
+        self.update_feature = encoder.update_feature
 
     @torch.no_grad()
     def forward(self, image, extrinsics, intrinsics, near, far):
+        """Run stage0: encoder context -> (gaussians..., state, gt_features)."""
         context = {
             "image": image,
             "extrinsics": extrinsics,
@@ -44,6 +79,10 @@ class Stage0Wrapper(nn.Module):
         }
         out = self.encoder(context)
         g = out["gaussians"]
+        state = _init_state(self.update_proj, out["condition_features"])
+        gt_features = _gt_features(
+            self.update_feature, image, (image.shape[-2] // 4, image.shape[-1] // 4)
+        )
         return (
             g.means,
             g.covariances,
@@ -52,12 +91,209 @@ class Stage0Wrapper(nn.Module):
             g.scales,
             g.rotations,
             g.rotations_unnorm,
-            out["condition_features"],
+            state,
+            gt_features,
+        )
+
+
+#: positional order of the intermediates exchanged by the split engines
+SPLIT_PREP_NAMES = (
+    "ref_features",
+    "tgt_features",
+    "intrinsics_input",
+    "pose_curr",
+    "depth_candidates",
+    "features_cnn",
+    "features_mv",
+    "features_mono",
+    "mono_intermediate_0",
+    "mono_intermediate_1",
+    "mono_intermediate_2",
+    "mono_intermediate_3",
+    "cnn_all_0",
+    "cnn_all_1",
+    "cnn_all_2",
+    "raw_mono_0",
+    "raw_mono_1",
+    "raw_mono_2",
+    "raw_mono_3",
+)
+
+
+class Stage0FeaturesWrapper(nn.Module):
+    """Split engine A: images+poses -> feature/camera intermediates.
+
+    The warp + cost-volume contraction is deliberately NOT in this graph:
+    TensorRT fuses it into a single segment with ~2.4 GiB of tactic scratch
+    (the stage0 memory peak on a 12 GB card). It runs in torch between the
+    two engines with depth-candidate chunking (~100 ms, ~1 GiB peak).
+    """
+
+    def __init__(self, encoder) -> None:
+        super().__init__()
+        self.encoder = encoder
+
+    @torch.no_grad()
+    def forward(self, image, extrinsics, intrinsics, near, far):
+        enc = self.encoder
+        v = image.shape[1]
+        if v > 3:
+            xyzs = extrinsics[:, :, :3, -1].detach()
+            cameras_dist_index = torch.argsort(torch.cdist(xyzs, xyzs, p=2))
+            cameras_dist_index = cameras_dist_index[
+                :, :, : (enc.cfg.local_mv_match + 1)
+            ]
+        else:
+            cameras_dist_index = None
+        prep = enc.depth_predictor(
+            image,
+            attn_splits_list=[2],
+            min_depth=1.0 / far,
+            max_depth=1.0 / near,
+            intrinsics=intrinsics,
+            extrinsics=extrinsics,
+            nn_matrix=cameras_dist_index,
+            _mode="features",
+        )
+        # depth_candidates_curr is regenerated in torch from depth_candidates
+        # (repeat) to avoid 0.5 GiB of engine IO; the DPT/regressor features
+        # travel as fp16 to keep the split's intermediate traffic small
+        return (
+            prep["ref_features"],
+            prep["tgt_features"],
+            prep["intrinsics_input"],
+            prep["pose_curr"],
+            prep["depth_candidates"],
+            prep["features_list_cnn"][0].half(),
+            prep["features_mv"].half(),
+            prep["features_list_mono"][0].half(),
+            *(x.half() for x in prep["mono_intermediate_features"]),
+            *(x.half() for x in prep["features_list_cnn_all_scales"]),
+            *(x.half() for x in prep["raw_mono_features"]),
+        )
+
+
+class Stage0RegressorWrapper(nn.Module):
+    """Split engine B: cost_volume + intermediates -> gaussians + init.
+
+    ``cost_volume`` is computed externally in torch (chunked) from engine
+    A's intermediates, so the regressor/upsampler/gaussian head never shares
+    a process with the warp segment's giant scratch.
+    """
+
+    def __init__(self, encoder) -> None:
+        super().__init__()
+        self.encoder = encoder
+        self.update_proj = encoder.update_proj
+        self.update_feature = encoder.update_feature
+
+    @torch.no_grad()
+    def forward(
+        self,
+        ref_features,
+        tgt_features,
+        intrinsics_input,
+        pose_curr,
+        depth_candidates,
+        features_cnn,
+        features_mv,
+        features_mono,
+        mono0,
+        mono1,
+        mono2,
+        mono3,
+        cnn_all0,
+        cnn_all1,
+        cnn_all2,
+        raw0,
+        raw1,
+        raw2,
+        raw3,
+        cost_volume,
+        image,
+        extrinsics,
+        intrinsics,
+        near,
+        far,
+    ):
+        enc = self.encoder
+        b, v, _, h, w = image.shape
+        min_depth = (1.0 / far).view(-1)
+        max_depth = (1.0 / near).view(-1)
+        min_depth, max_depth = 1.0 / max_depth, 1.0 / min_depth
+        min_depth, max_depth = torch.log(min_depth), torch.log(max_depth)
+        prep = {
+            "b": b,
+            "v": v,
+            "c": ref_features.shape[1],
+            "h": ref_features.shape[2],
+            "w": ref_features.shape[3],
+            "b_new": b * v,
+            "scale_idx": 0,
+            "downsample_factor": enc.depth_predictor.upsample_factor,
+            "depth": None,
+            "features_list_cnn": [features_cnn.float()],
+            "features_list_cnn_all_scales": [
+                cnn_all0.float(),
+                cnn_all1.float(),
+                cnn_all2.float(),
+            ],
+            "features_list_mv": [features_mv.float()],
+            "features_mv": features_mv.float(),
+            "features_list_mono": [features_mono.float()],
+            "mono_intermediate_features": [
+                mono0.float(),
+                mono1.float(),
+                mono2.float(),
+                mono3.float(),
+            ],
+            "raw_mono_features": [
+                raw0.float(),
+                raw1.float(),
+                raw2.float(),
+                raw3.float(),
+            ],
+            "ref_features": ref_features,
+            "tgt_features": tgt_features,
+            "intrinsics_input": intrinsics_input,
+            "pose_curr": pose_curr,
+            "depth_candidates": depth_candidates,
+            "depth_candidates_curr": None,
+            "min_depth": min_depth,
+            "max_depth": max_depth,
+        }
+        results_dict = enc.depth_predictor(
+            None, _mode="after", prep=prep, cost_volume=cost_volume
+        )
+        context = {
+            "image": image,
+            "extrinsics": extrinsics,
+            "intrinsics": intrinsics,
+            "near": near,
+            "far": far,
+        }
+        out = enc._forward_from_results(context, results_dict)
+        g = out["gaussians"]
+        state = _init_state(self.update_proj, out["condition_features"])
+        gt_features = _gt_features(
+            self.update_feature, image, (image.shape[-2] // 4, image.shape[-1] // 4)
+        )
+        return (
+            g.means,
+            g.covariances,
+            g.harmonics,
+            g.opacities,
+            g.scales,
+            g.rotations,
+            g.rotations_unnorm,
+            state,
+            gt_features,
         )
 
 
 class Stage1StateInit(nn.Module):
-    """condition_features [BV, C_state, lh, lw] -> state [N, C_state]."""
+    """condition_features [BV, C_state, lh, lw] -> state [N, C_state].
+    Torch reference for the state branch folded into Stage0Wrapper."""
 
     def __init__(self, encoder) -> None:
         super().__init__()
@@ -65,13 +301,13 @@ class Stage1StateInit(nn.Module):
 
     @torch.no_grad()
     def forward(self, condition_features):
-        state = self.update_proj(condition_features)  # [BV, C, lh, lw]
-        bv, c, lh, lw = state.shape
-        return state.permute(0, 2, 3, 1).reshape(bv * lh * lw, c)
+        """Project condition features into the recurrent state."""
+        return _init_state(self.update_proj, condition_features)
 
 
 class Stage1GtFeatures(nn.Module):
-    """GT context images -> input_view_features (cached across refine steps)."""
+    """GT context images -> input_view_features (cached across refine steps).
+    Torch reference for the GT-feature branch folded into Stage0Wrapper."""
 
     def __init__(self, encoder, v: int, image_shape: tuple[int, int]) -> None:
         super().__init__()
@@ -82,17 +318,8 @@ class Stage1GtFeatures(nn.Module):
 
     @torch.no_grad()
     def forward(self, context_image):
-        b, v = context_image.shape[:2]
-        x = context_image.reshape(b * v, *context_image.shape[2:])
-        features = self.update_feature(_normalize(x))
-        out = []
-        for feat in features:
-            if feat.shape[-2:] != self.latent_hw:
-                feat = F.interpolate(
-                    feat, size=self.latent_hw, mode="bilinear", align_corners=True
-                )
-            out.append(feat)
-        return torch.cat(out, dim=1)
+        """Extract the cached GT render-error features."""
+        return _gt_features(self.update_feature, context_image, self.latent_hw)
 
 
 class Stage1StepWrapper(nn.Module):
@@ -101,7 +328,7 @@ class Stage1StepWrapper(nn.Module):
     Inputs:
       rendered_color        [1, V, 3, H, W]   external rasterizer output
       context_image         [1, V, 3, H, W]   GT context images
-      input_view_features   [V, 256, lh, lw]  cached (Stage1GtFeatures)
+      input_view_features   [V, 256, lh, lw]  cached (stage0 GT features)
       state                 [N, C_state]      carried recurrent state
       prev_means            [1, N, 3]
       prev_scales           [1, N, 3]
@@ -141,9 +368,10 @@ class Stage1StepWrapper(nn.Module):
         prev_rotations_unnorm,
         prev_opacities_raw,
         prev_shs,
-        extrinsics_rot,
+        extrinsics_rot,  # graph-contract input (unused by the torch path)
         offset,
     ):
+        """One refinement step on external render feedback -> updated tuple."""
         v = self.v
         b = 1
         lh, lw = self.latent_hw
