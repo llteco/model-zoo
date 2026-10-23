@@ -4,9 +4,12 @@ the exportable ``zoo.model.resplat.knn.KnnQuery`` module, and training-only
 code paths are removed.
 
 Stages exposed via ``zoo.export``:
-    resplat.stage0           initial Gaussian prediction
+    resplat.stage0           initial Gaussians + refinement init (recurrent
+                             state + cached GT features) in one graph
     resplat.stage1_step      ONE refinement step (rasterizer external)
-    resplat.stage1_state_init, resplat.stage1_gtfeat   helpers
+
+Stage1StateInit / Stage1GtFeatures are torch references for the stage0
+branches (branch-level parity tests), not standalone exports.
 """
 
 from zoo.model.resplat.encoder_resplat import (
@@ -15,6 +18,7 @@ from zoo.model.resplat.encoder_resplat import (
     GaussianCfg,
 )
 from zoo.model.resplat.knn import KnnQuery
+from zoo.model.resplat.presets import build_encoder, dl3dv_cfg
 from zoo.model.resplat.wrappers import (
     Stage0Wrapper,
     Stage1GtFeatures,
