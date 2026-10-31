@@ -1,13 +1,19 @@
 """Stage wrappers for ReSplat export.
 
-The full two-stage inference is covered by four graphs:
+The full two-stage inference is covered by two graphs:
 
-  Stage0Wrapper      initial Gaussian prediction (EncoderReSplat.forward)
-  Stage1StateInit    condition_features -> recurrent state (update_proj)
-  Stage1GtFeatures   GT context images -> cached input_view_features
+  Stage0Wrapper      initial Gaussian prediction with the refinement init
+                     folded in: images+poses -> Gaussians + recurrent
+                     state + cached GT render-error features (the former
+                     stage1_state_init / stage1_gtfeat graphs)
   Stage1StepWrapper  ONE refinement step with the rasterizer cut out:
                      rendered context images arrive as an input.
+
+Stage1StateInit / Stage1GtFeatures are the torch references for the two
+stage0 branches (used by the branch-level ONNX parity tests); they no
+longer export as standalone graphs.
 """
+# pylint: disable=unused-argument
 
 import torch
 import torch.nn.functional as F
@@ -25,16 +31,45 @@ def _normalize(x: torch.Tensor) -> torch.Tensor:
     return (x - mean) / std
 
 
+def _init_state(update_proj, condition_features: torch.Tensor) -> torch.Tensor:
+    """condition_features [BV, C, lh, lw] -> state [BV*lh*lw, C_state]."""
+    state = update_proj(condition_features)  # [BV, C_state, lh, lw]
+    bv, c, lh, lw = state.shape
+    return state.permute(0, 2, 3, 1).reshape(bv * lh * lw, c)
+
+
+def _gt_features(update_feature, image: torch.Tensor, latent_hw) -> torch.Tensor:
+    """[B, V, 3, H, W] in [0, 1] -> input_view_features [BV, 256, lh, lw]."""
+    b, v = image.shape[:2]
+    x = image.reshape(b * v, *image.shape[2:])
+    features = update_feature(_normalize(x))
+    out = []
+    for feat in features:
+        if feat.shape[-2:] != latent_hw:
+            feat = F.interpolate(
+                feat, size=latent_hw, mode="bilinear", align_corners=True
+            )
+        out.append(feat)
+    return torch.cat(out, dim=1)
+
+
 class Stage0Wrapper(nn.Module):
-    """Initial Gaussian prediction. Delegates to EncoderReSplat.forward
-    (built with num_refine > 0 so condition_features is returned)."""
+    """Initial Gaussian prediction with the refinement initialization folded
+    in. Must be built with num_refine > 0 (the update heads must exist);
+    the intermediate condition_features never leave the graph."""
 
     def __init__(self, encoder) -> None:
         super().__init__()
+        assert encoder.cfg.num_refine > 0, (
+            "stage0 folds in the refinement init; build with num_refine > 0"
+        )
         self.encoder = encoder
+        self.update_proj = encoder.update_proj
+        self.update_feature = encoder.update_feature
 
     @torch.no_grad()
     def forward(self, image, extrinsics, intrinsics, near, far):
+        """Run stage0: encoder context -> (gaussians..., state, gt_features)."""
         context = {
             "image": image,
             "extrinsics": extrinsics,
@@ -44,6 +79,10 @@ class Stage0Wrapper(nn.Module):
         }
         out = self.encoder(context)
         g = out["gaussians"]
+        state = _init_state(self.update_proj, out["condition_features"])
+        gt_features = _gt_features(
+            self.update_feature, image, (image.shape[-2] // 4, image.shape[-1] // 4)
+        )
         return (
             g.means,
             g.covariances,
@@ -52,12 +91,14 @@ class Stage0Wrapper(nn.Module):
             g.scales,
             g.rotations,
             g.rotations_unnorm,
-            out["condition_features"],
+            state,
+            gt_features,
         )
 
 
 class Stage1StateInit(nn.Module):
-    """condition_features [BV, C_state, lh, lw] -> state [N, C_state]."""
+    """condition_features [BV, C_state, lh, lw] -> state [N, C_state].
+    Torch reference for the state branch folded into Stage0Wrapper."""
 
     def __init__(self, encoder) -> None:
         super().__init__()
@@ -65,13 +106,13 @@ class Stage1StateInit(nn.Module):
 
     @torch.no_grad()
     def forward(self, condition_features):
-        state = self.update_proj(condition_features)  # [BV, C, lh, lw]
-        bv, c, lh, lw = state.shape
-        return state.permute(0, 2, 3, 1).reshape(bv * lh * lw, c)
+        """Project condition features into the recurrent state."""
+        return _init_state(self.update_proj, condition_features)
 
 
 class Stage1GtFeatures(nn.Module):
-    """GT context images -> input_view_features (cached across refine steps)."""
+    """GT context images -> input_view_features (cached across refine steps).
+    Torch reference for the GT-feature branch folded into Stage0Wrapper."""
 
     def __init__(self, encoder, v: int, image_shape: tuple[int, int]) -> None:
         super().__init__()
@@ -82,17 +123,8 @@ class Stage1GtFeatures(nn.Module):
 
     @torch.no_grad()
     def forward(self, context_image):
-        b, v = context_image.shape[:2]
-        x = context_image.reshape(b * v, *context_image.shape[2:])
-        features = self.update_feature(_normalize(x))
-        out = []
-        for feat in features:
-            if feat.shape[-2:] != self.latent_hw:
-                feat = F.interpolate(
-                    feat, size=self.latent_hw, mode="bilinear", align_corners=True
-                )
-            out.append(feat)
-        return torch.cat(out, dim=1)
+        """Extract the cached GT render-error features."""
+        return _gt_features(self.update_feature, context_image, self.latent_hw)
 
 
 class Stage1StepWrapper(nn.Module):
@@ -101,7 +133,7 @@ class Stage1StepWrapper(nn.Module):
     Inputs:
       rendered_color        [1, V, 3, H, W]   external rasterizer output
       context_image         [1, V, 3, H, W]   GT context images
-      input_view_features   [V, 256, lh, lw]  cached (Stage1GtFeatures)
+      input_view_features   [V, 256, lh, lw]  cached (stage0 GT features)
       state                 [N, C_state]      carried recurrent state
       prev_means            [1, N, 3]
       prev_scales           [1, N, 3]
@@ -141,9 +173,10 @@ class Stage1StepWrapper(nn.Module):
         prev_rotations_unnorm,
         prev_opacities_raw,
         prev_shs,
-        extrinsics_rot,
+        extrinsics_rot,  # graph-contract input (unused by the torch path)
         offset,
     ):
+        """One refinement step on external render feedback -> updated tuple."""
         v = self.v
         b = 1
         lh, lw = self.latent_hw
